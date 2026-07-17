@@ -4,6 +4,11 @@ from pydantic import BaseModel
 app = FastAPI()
 
 
+class Task(BaseModel):
+    id: int
+    title: str
+    completed: bool
+
 class TaskCreate(BaseModel):
     title: str
 
@@ -30,7 +35,7 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/tasks")
+@app.get("/tasks", response_model=list[Task])
 def get_tasks(completed: bool | None = None):
     if completed is None:
         return tasks
@@ -42,7 +47,7 @@ def get_tasks(completed: bool | None = None):
     ]
 
 
-@app.get("/tasks/{task_id}")
+@app.get("/tasks/{task_id}", response_model=Task)
 def get_task(task_id: int):
     for task in tasks:
         if task["id"] == task_id:
@@ -54,7 +59,7 @@ def get_task(task_id: int):
     )
 
 
-@app.post("/tasks", status_code=201)
+@app.post("/tasks", response_model=Task, status_code=201)
 def create_task(task: TaskCreate):
     new_task = {
         "id": len(tasks) + 1,
@@ -66,7 +71,7 @@ def create_task(task: TaskCreate):
     return new_task
 
 
-@app.patch("/tasks/{task_id}")
+@app.patch("/tasks/{task_id}", response_model=Task)
 def update_task(task_id: int, task_update: TaskUpdate):
     for task in tasks:
         if task["id"] == task_id:
