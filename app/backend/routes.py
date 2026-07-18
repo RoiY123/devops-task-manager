@@ -1,87 +1,113 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from app.backend.database import get_db
+from app.backend.models import Task as TaskModel
 from app.backend.schemas import Task, TaskCreate, TaskUpdate
 
 
 router = APIRouter()
 
 
-tasks = [
-    {
-        "id": 1,
-        "title": "Learn FastAPI",
-        "completed": False
-    },
-    {
-        "id": 2,
-        "title": "Learn Docker",
-        "completed": True
-    }
-]
-
-
 @router.get("/tasks", response_model=list[Task])
-def get_tasks(completed: bool | None = None):
-    if completed is None:
-        return tasks
+def get_tasks(
+    completed: bool | None = None,
+    db: Session = Depends(get_db),    
+):
+    statement = select(TaskModel).order_by(TaskModel.id)
 
-    return [
-        task
-        for task in tasks
-        if task["completed"] == completed
-    ]
+    if completed is not None:
+        statement = statement.where(
+            TaskModel.completed == completed
+        )
+
+    return db.scalars(statement).all()
 
 
 @router.get("/tasks/{task_id}", response_model=Task)
-def get_task(task_id: int):
-    for task in tasks:
-        if task["id"] == task_id:
-            return task
-
-    raise HTTPException(
-        status_code=404,
-        detail="Task not found"
+def get_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    statement = select(TaskModel).where(
+        TaskModel.id == task_id
     )
+
+    task = db.scalar(statement)
+
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found",
+        )
+    
+    return task
 
 
 @router.post("/tasks", response_model=Task, status_code=201)
-def create_task(task: TaskCreate):
-    new_task = {
-        "id": len(tasks) + 1,
-        "title": task.title,
-        "completed": False
-    }
+def create_task(
+    task: TaskCreate,
+    db: Session = Depends(get_db),
+):
+    new_task = TaskModel(
+        title=task.title,
+        completed=False,
+    )
 
-    tasks.append(new_task)
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+
     return new_task
 
 
 @router.patch("/tasks/{task_id}", response_model=Task)
-def update_task(task_id: int, task_update: TaskUpdate):
-    for task in tasks:
-        if task["id"] == task_id:
-            if task_update.title is not None:
-                task["title"] = task_update.title
-
-            if task_update.completed is not None:
-                task["completed"] = task_update.completed
-
-            return task
-
-    raise HTTPException(
-        status_code=404,
-        detail="Task not found"
+def update_task(
+    task_id: int,
+    updated_task: TaskUpdate,
+    db: Session = Depends(get_db),
+):
+    statement = select(TaskModel).where(
+        TaskModel.id == task_id
     )
+
+    task = db.scalar(statement)
+
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found",
+        )
+    
+    if updated_task.title is not None:
+        task.title = updated_task.title
+    
+    if updated_task.completed is not None:
+        task.completed = updated_task.completed
+
+    db.commit()
+    db.refresh(task)
+
+    return task
 
 
 @router.delete("/tasks/{task_id}", status_code=204)
-def delete_task(task_id: int):
-    for task in tasks:
-        if task["id"] == task_id:
-            tasks.remove(task)
-            return
-    
-    raise HTTPException(
-        status_code=404,
-        detail="Task not found"
+def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+):
+    statement = select(TaskModel).where(
+        TaskModel.id == task_id
     )
+
+    task = db.scalar(statement)
+
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Task not found",
+        )
+
+    db.delete(task)
+    db.commit()
