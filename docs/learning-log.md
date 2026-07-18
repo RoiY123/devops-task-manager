@@ -35,3 +35,27 @@ Built:
 
 Git:
 feat: configure SQLAlchemy database connectivity
+
+## Day 3
+Learned:
+- SQLAlchemy ORM models and object mapping
+- Alembic database migrations
+- SQLAlchemy Unit of Work pattern
+- SQLAlchemy dirty tracking
+- `db.add()`, `db.commit()`, `db.refresh()`, and `db.delete()`
+- `db.scalar()` vs `db.scalars().all()`
+- Building SQL queries with `select()`, `where()`, and `order_by()`
+- Why PostgreSQL doesn't guarantee row order without `ORDER BY`
+- PostgreSQL sequences and why primary key IDs are not reused
+- Stateless application architecture and shared database persistence
+
+Built:
+- SQLAlchemy `Task` ORM model
+- Initial Alembic migration for the `tasks` table
+- Persistent CRUD operations backed by PostgreSQL
+- Task retrieval with filtering and deterministic ordering
+- Database-backed task updates and deletion
+- Removed the in-memory task storage completely
+
+Git:
+feat: persist tasks in PostgreSQL using SQLAlchemy ORM
