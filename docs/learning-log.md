@@ -59,3 +59,25 @@ Built:
 
 Git:
 feat: persist tasks in PostgreSQL using SQLAlchemy ORM
+
+## Day 4
+Learned:
+- Pydantic request vs response schemas
+- `ConfigDict(from_attributes=True)` and ORM serialization
+- Secure password hashing with Argon2 (`pwdlib`)
+- Password verification and the purpose of random salts
+- Why passwords should never be stored in plain text
+- User registration workflow in a REST API
+- Application-level validation vs database unique constraints
+- HTTP status codes `201 Created` and `409 Conflict`
+
+Built:
+- SQLAlchemy `User` ORM model
+- Alembic migration for the `users` table
+- Authentication schemas (`UserCreate` and `UserResponse`)
+- Password hashing and verification utilities (`security.py`)
+- User registration endpoint (`POST /register`)
+- Duplicate email validation before user creation
+
+Git:
+feat: implement user registration with secure password hashing

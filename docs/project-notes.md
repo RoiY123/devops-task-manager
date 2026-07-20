@@ -44,14 +44,17 @@ Completed:
 - PostgreSQL integration
 - SQLAlchemy ORM
 - Alembic migrations
+- User registration
+- Password hashing
 
 Current milestone:
 - Authentication
 
 Next milestone:
-- User registration
-- Password hashing
+- Login endpoint
 - JWT authentication
+- Protected routes
+- User ownership for tasks
 
 ---
 
@@ -114,15 +117,23 @@ Accepted
 
 ---
 
+### Authentication
+
+Decision:
+Use Argon2 (`pwdlib`) for password hashing. Store only hashed passwords in the database and never persist plain-text passwords.
+
+Status:
+Accepted
+
 ## Next Session
 
-Start implementing authentication.
+Implement user authentication.
 
 Topics:
 
-- Users table
-- Password hashing
-- Registration endpoint
 - Login endpoint
-- JWT tokens
+- Password verification
+- JWT access tokens
+- Authentication dependencies
 - Protected routes
+- Associating tasks with authenticated users
