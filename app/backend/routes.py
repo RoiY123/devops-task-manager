@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.backend.database import get_db
-from app.backend.models import Task as TaskModel
-from app.backend.schemas import Task, TaskCreate, TaskUpdate
+from app.backend.models import Task as TaskModel, User
+from app.backend.schemas import Task, TaskCreate, TaskUpdate, UserCreate, UserResponse
+from app.backend.security import hash_password
 
 
 router = APIRouter()
@@ -111,3 +112,34 @@ def delete_task(
 
     db.delete(task)
     db.commit()
+
+
+@router.post(
+    "/register",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def register_user(
+    user_data: UserCreate,
+    db: Session = Depends(get_db),
+):
+    existing_user = db.scalar(
+        select(User).where(User.email == user_data.email)
+    )
+
+    if existing_user is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already registered",
+        )
+    
+    user = User(
+        email=user_data.email,
+        hashed_password=hash_password(user_data.password),
+    )
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return user
