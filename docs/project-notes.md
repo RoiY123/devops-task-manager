@@ -46,15 +46,16 @@ Completed:
 - Alembic migrations
 - User registration
 - Password hashing
-
-Current milestone:
-- Authentication
-
-Next milestone:
 - Login endpoint
 - JWT authentication
+
+Current milestone:
+- Route authentication
+
+Next milestone:
 - Protected routes
 - User ownership for tasks
+- Authorization
 
 ---
 
@@ -120,20 +121,20 @@ Accepted
 ### Authentication
 
 Decision:
-Use Argon2 (`pwdlib`) for password hashing. Store only hashed passwords in the database and never persist plain-text passwords.
+Use Argon2 (`pwdlib`) for password hashing and JWT access tokens for stateless authentication.
+Store only hashed passwords in the database and include only the authenticated user's ID (`sub`) in the JWT payload.
 
 Status:
 Accepted
 
 ## Next Session
 
-Implement user authentication.
+Implement route authentication and task ownership.
 
 Topics:
 
-- Login endpoint
-- Password verification
-- JWT access tokens
-- Authentication dependencies
+- Authentication dependency (`get_current_user`)
+- JWT validation
 - Protected routes
 - Associating tasks with authenticated users
+- Restricting users to their own tasks

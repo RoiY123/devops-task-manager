@@ -81,3 +81,23 @@ Built:
 
 Git:
 feat: implement user registration with secure password hashing
+
+## Day 5
+Learned:
+- JSON Web Token (JWT) authentication workflow
+- Difference between authentication and authorization
+- JWT structure (Header, Payload, Signature)
+- Purpose of the `sub` and `exp` JWT claims
+- Why JWTs should contain minimal user information
+- Why login endpoints return generic authentication errors to prevent user enumeration
+- Loading application secrets from a `.env` file using `python-dotenv`
+- Debugging Python package installation issues by inspecting imports instead of changing application code
+
+Built:
+- JWT access token generation
+- Authentication response schema (`Token`)
+- User login endpoint (`POST /login`)
+- Login flow with password verification and JWT generation
+
+Git:
+feat: implement JWT login authentication
