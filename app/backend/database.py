@@ -1,9 +1,13 @@
+import os
+from dotenv import load_dotenv
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 
-DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/task_manager"
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(
     DATABASE_URL,

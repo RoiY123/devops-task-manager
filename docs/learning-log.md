@@ -101,3 +101,24 @@ Built:
 
 Git:
 feat: implement JWT login authentication
+
+## Day 6
+Learned:
+- Implemented route protection using FastAPI dependencies and JWT authentication.
+- Understood the difference between authentication (identity) and authorization (permissions).
+- Learned how resource ownership is enforced by combining the authenticated user's ID with SQLAlchemy queries.
+- Added a one-to-many relationship between `User` and `Task` using SQLAlchemy relationships and foreign keys.
+- Learned why APIs often return `404 Not Found` instead of `403 Forbidden` when users attempt to access resources they do not own.
+- Understood why application code and database migrations must remain synchronized during deployments.
+- Moved application configuration completely to environment variables.
+- Learned the purpose of a `.env.example` file and why real secrets should never be committed to Git.
+
+Built:
+- Authentication dependency (`get_current_user`) for protected endpoints.
+- Task ownership using `owner_id` and SQLAlchemy relationships.
+- Authorization for all task CRUD operations.
+- Environment-based configuration for the database connection and JWT settings.
+- `.env.example` template for project setup.
+
+Git:
+feat: implement user authorization and task ownership

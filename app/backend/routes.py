@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.backend.database import get_db
 from app.backend.models import Task as TaskModel, User
 from app.backend.schemas import Task, TaskCreate, TaskUpdate, UserCreate, UserLogin, UserResponse, Token
-from app.backend.security import create_access_token, hash_password, verify_password
+from app.backend.security import create_access_token, hash_password, verify_password, get_current_user
 
 
 router = APIRouter()
@@ -14,14 +14,19 @@ router = APIRouter()
 @router.get("/tasks", response_model=list[Task])
 def get_tasks(
     completed: bool | None = None,
-    db: Session = Depends(get_db),    
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    statement = select(TaskModel).order_by(TaskModel.id)
+    statement = select(TaskModel).where(
+        TaskModel.owner_id == current_user.id
+    )
 
     if completed is not None:
         statement = statement.where(
             TaskModel.completed == completed
         )
+
+    statement = statement.order_by(TaskModel.id)
 
     return db.scalars(statement).all()
 
@@ -30,9 +35,11 @@ def get_tasks(
 def get_task(
     task_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     statement = select(TaskModel).where(
-        TaskModel.id == task_id
+        TaskModel.id == task_id,
+        TaskModel.owner_id == current_user.id,
     )
 
     task = db.scalar(statement)
@@ -50,10 +57,12 @@ def get_task(
 def create_task(
     task: TaskCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     new_task = TaskModel(
         title=task.title,
         completed=False,
+        owner_id=current_user.id
     )
 
     db.add(new_task)
@@ -68,9 +77,11 @@ def update_task(
     task_id: int,
     updated_task: TaskUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     statement = select(TaskModel).where(
-        TaskModel.id == task_id
+        TaskModel.id == task_id,
+        TaskModel.owner_id == current_user.id,
     )
 
     task = db.scalar(statement)
@@ -97,9 +108,11 @@ def update_task(
 def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     statement = select(TaskModel).where(
-        TaskModel.id == task_id
+        TaskModel.id == task_id,
+        TaskModel.owner_id == current_user.id,
     )
 
     task = db.scalar(statement)

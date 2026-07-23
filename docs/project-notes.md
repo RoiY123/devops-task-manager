@@ -48,14 +48,19 @@ Completed:
 - Password hashing
 - Login endpoint
 - JWT authentication
+- Route protection
+- Task ownership
+- Authorization for all CRUD operations
+- Environment-based configuration
 
 Current milestone:
-- Route authentication
+- Authentication and authorization completed
 
 Next milestone:
-- Protected routes
-- User ownership for tasks
-- Authorization
+- Docker improvements
+- Containerizing the complete application
+- CI/CD pipeline with GitHub Actions
+- Deployment preparation
 
 ---
 
@@ -65,7 +70,9 @@ Current application:
 
 FastAPI
 ↓
-SQLAlchemy
+Authentication (JWT)
+↓
+SQLAlchemy ORM
 ↓
 PostgreSQL
 
@@ -127,14 +134,24 @@ Store only hashed passwords in the database and include only the authenticated u
 Status:
 Accepted
 
+---
+
+### Configuration
+
+Decision:
+Store application configuration and secrets using environment variables. Commit a `.env.example` template while excluding `.env` from version control.
+
+Status:
+Accepted
+
 ## Next Session
 
-Implement route authentication and task ownership.
+Begin transitioning from application development to DevOps.
 
 Topics:
 
-- Authentication dependency (`get_current_user`)
-- JWT validation
-- Protected routes
-- Associating tasks with authenticated users
-- Restricting users to their own tasks
+- Improve the Docker setup
+- Build a production-ready container image
+- Prepare the application for CI/CD
+- Docker Compose improvements
+- Deployment strategy
