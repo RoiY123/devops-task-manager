@@ -54,11 +54,11 @@ Completed:
 - Environment-based configuration
 
 Current milestone:
-- Authentication and authorization completed
+- Docker Compose containerization completed
 
 Next milestone:
-- Docker improvements
-- Containerizing the complete application
+- Docker development workflow improvements (bind mounts and hot reload)
+- Container debugging and inspection
 - CI/CD pipeline with GitHub Actions
 - Deployment preparation
 
@@ -68,13 +68,17 @@ Next milestone:
 
 Current application:
 
-FastAPI
-↓
-Authentication (JWT)
-↓
-SQLAlchemy ORM
-↓
-PostgreSQL
+Docker Compose:
+
+  FastAPI Container
+        ↓
+  Authentication (JWT)
+        ↓
+  SQLAlchemy ORM
+        ↓
+  PostgreSQL Container
+        ↓
+  Named Docker Volume
 
 ---
 
@@ -140,6 +144,17 @@ Accepted
 
 Decision:
 Store application configuration and secrets using environment variables. Commit a `.env.example` template while excluding `.env` from version control.
+
+Status:
+Accepted
+
+---
+
+### Containerization
+
+Decision:
+Use Docker Compose to orchestrate the FastAPI application and PostgreSQL database.
+Persist database data using a named Docker volume, isolate services on a dedicated Docker network, and execute database migrations through Alembic inside Docker containers.
 
 Status:
 Accepted

@@ -122,3 +122,24 @@ Built:
 
 Git:
 feat: implement user authorization and task ownership
+
+## Day 7
+Learned:
+- Docker Compose architecture and how multiple services are managed as a single application.
+- The difference between Docker images, containers, networks, and volumes.
+- How Docker Compose creates an isolated network and allows services to communicate using service names (e.g., `postgres`) instead of IP addresses.
+- The purpose of Docker health checks and how `depends_on` with `condition: service_healthy` controls startup order.
+- How Alembic migrations are executed inside a temporary Docker container using `docker compose run --rm`.
+- Why the `alembic_version` table tracks the current database schema version instead of inspecting the database structure.
+- The difference between `docker compose stop`, `start`, `up`, and `down`, and how volumes preserve PostgreSQL data across container recreation.
+- The role of environment-specific configuration files (`.env`, `.env.docker`, and their example templates).
+
+Built:
+- Docker Compose configuration for the FastAPI application and PostgreSQL database.
+- PostgreSQL service with persistent storage using a named Docker volume.
+- Docker health check for PostgreSQL using `pg_isready`.
+- Containerized Alembic migration workflow.
+- Fully containerized FastAPI application communicating with PostgreSQL through the Docker network.
+
+Git:
+feat: containerize application with Docker Compose
