@@ -133,6 +133,8 @@ Learned:
 - Why the `alembic_version` table tracks the current database schema version instead of inspecting the database structure.
 - The difference between `docker compose stop`, `start`, `up`, and `down`, and how volumes preserve PostgreSQL data across container recreation.
 - The role of environment-specific configuration files (`.env`, `.env.docker`, and their example templates).
+- How bind mounts allow containers to use source code directly from the host machine.
+- Basic Docker debugging techniques using `docker compose ps`, `logs`, `exec`, `inspect`, and `stats`.
 
 Built:
 - Docker Compose configuration for the FastAPI application and PostgreSQL database.
@@ -140,6 +142,8 @@ Built:
 - Docker health check for PostgreSQL using `pg_isready`.
 - Containerized Alembic migration workflow.
 - Fully containerized FastAPI application communicating with PostgreSQL through the Docker network.
+- Development Docker workflow with bind mounts and automatic code reloading.
+- Improved local development experience without rebuilding the image after Python code changes.
 
 Git:
-feat: containerize application with Docker Compose
+feat: improve Docker development workflow

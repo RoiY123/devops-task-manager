@@ -54,12 +54,12 @@ Completed:
 - Environment-based configuration
 
 Current milestone:
-- Docker Compose containerization completed
+- Docker development workflow completed
 
 Next milestone:
-- Docker development workflow improvements (bind mounts and hot reload)
-- Container debugging and inspection
 - CI/CD pipeline with GitHub Actions
+- Automated testing
+- Docker image build and validation
 - Deployment preparation
 
 ---
@@ -155,6 +155,9 @@ Accepted
 Decision:
 Use Docker Compose to orchestrate the FastAPI application and PostgreSQL database.
 Persist database data using a named Docker volume, isolate services on a dedicated Docker network, and execute database migrations through Alembic inside Docker containers.
+Use Docker Compose for local development with bind mounts and automatic application reloads.
+Keep the Dockerfile production-oriented while allowing Compose to override runtime behavior for development.
+Defer a dedicated production Compose configuration until the deployment phase.
 
 Status:
 Accepted
