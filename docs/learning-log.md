@@ -1,6 +1,7 @@
 # Learning Log
 
 ## Day 1
+
 Learned:
 - Client/server architecture
 - HTTP request flow
@@ -15,6 +16,7 @@ Git:
 feat: initialize FastAPI application with health endpoint
 
 ## Day 2
+
 Learned:
 - Docker basics (containers vs images)
 - Running PostgreSQL with Docker
@@ -37,6 +39,7 @@ Git:
 feat: configure SQLAlchemy database connectivity
 
 ## Day 3
+
 Learned:
 - SQLAlchemy ORM models and object mapping
 - Alembic database migrations
@@ -61,6 +64,7 @@ Git:
 feat: persist tasks in PostgreSQL using SQLAlchemy ORM
 
 ## Day 4
+
 Learned:
 - Pydantic request vs response schemas
 - `ConfigDict(from_attributes=True)` and ORM serialization
@@ -83,6 +87,7 @@ Git:
 feat: implement user registration with secure password hashing
 
 ## Day 5
+
 Learned:
 - JSON Web Token (JWT) authentication workflow
 - Difference between authentication and authorization
@@ -103,6 +108,7 @@ Git:
 feat: implement JWT login authentication
 
 ## Day 6
+
 Learned:
 - Implemented route protection using FastAPI dependencies and JWT authentication.
 - Understood the difference between authentication (identity) and authorization (permissions).
@@ -124,6 +130,7 @@ Git:
 feat: implement user authorization and task ownership
 
 ## Day 7
+
 Learned:
 - Docker Compose architecture and how multiple services are managed as a single application.
 - The difference between Docker images, containers, networks, and volumes.
@@ -147,3 +154,26 @@ Built:
 
 Git:
 feat: improve Docker development workflow
+
+## Day 8
+
+Learned:
+- The difference between unit tests and integration tests.
+- How `pytest` fixtures reduce duplicated setup code.
+- How `conftest.py` provides shared fixtures across the test suite.
+- How FastAPI dependency overrides allow tests to replace production database sessions.
+- How transaction rollback keeps the test database isolated between test runs.
+- How factory fixtures can generate multiple authenticated users without duplicating code.
+- Why integration tests should authenticate through the real API instead of bypassing the login endpoint.
+- How to test authentication, authorization, and resource ownership from a real client's perspective.
+- Why APIs often return `404 Not Found` instead of `403 Forbidden` for resources owned by other users to prevent information disclosure.
+
+Built:
+- Isolated PostgreSQL test database.
+- Shared pytest fixtures for the test client and database session.
+- Authentication header factory fixture for reusable authenticated requests.
+- Integration test suite covering health checks, user registration, login, protected endpoints, task creation, and task ownership.
+- Automated verification that users cannot view, modify, or delete resources owned by other users.
+
+Git:
+test: add integration test suite for authentication and task ownership

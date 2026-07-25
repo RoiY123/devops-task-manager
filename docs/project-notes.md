@@ -54,11 +54,11 @@ Completed:
 - Environment-based configuration
 
 Current milestone:
-- Docker development workflow completed
+- Integration testing completed
 
 Next milestone:
-- CI/CD pipeline with GitHub Actions
-- Automated testing
+- GitHub Actions CI pipeline
+- Automated test execution
 - Docker image build and validation
 - Deployment preparation
 
@@ -158,6 +158,19 @@ Persist database data using a named Docker volume, isolate services on a dedicat
 Use Docker Compose for local development with bind mounts and automatic application reloads.
 Keep the Dockerfile production-oriented while allowing Compose to override runtime behavior for development.
 Defer a dedicated production Compose configuration until the deployment phase.
+
+Status:
+Accepted
+
+---
+
+### Testing Strategy
+
+Decision:
+
+Use integration tests with pytest, FastAPI's TestClient, and a dedicated PostgreSQL test database.
+Each test runs inside its own database transaction, which is rolled back after execution to ensure complete isolation.
+Authentication is performed through the application's real login endpoint, and reusable pytest fixtures provide authenticated users and shared test setup.
 
 Status:
 Accepted
