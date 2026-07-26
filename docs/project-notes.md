@@ -54,12 +54,11 @@ Completed:
 - Environment-based configuration
 
 Current milestone:
-- Integration testing completed
+- GitHub Actions CI pipeline completed
 
 Next milestone:
-- GitHub Actions CI pipeline
-- Automated test execution
-- Docker image build and validation
+- Automated Docker image build
+- Publish Docker image to GitHub Container Registry (GHCR)
 - Deployment preparation
 
 ---
@@ -68,8 +67,26 @@ Next milestone:
 
 Current application:
 
-Docker Compose:
+Developer Push
+        ↓
+GitHub Actions
+        ↓
+Ubuntu Runner
+        ↓
+PostgreSQL Service Container
+        ↓
+Install Dependencies
+        ↓
+Alembic Migrations
+        ↓
+Integration Tests
+        ↓
+CI Pass / Fail
 
+Local development:
+
+  Docker Compose
+        ↓
   FastAPI Container
         ↓
   Authentication (JWT)
@@ -171,6 +188,18 @@ Decision:
 Use integration tests with pytest, FastAPI's TestClient, and a dedicated PostgreSQL test database.
 Each test runs inside its own database transaction, which is rolled back after execution to ensure complete isolation.
 Authentication is performed through the application's real login endpoint, and reusable pytest fixtures provide authenticated users and shared test setup.
+
+Status:
+Accepted
+
+---
+
+### Continuous Integration
+
+Decision:
+
+Use GitHub Actions to validate every code change in a clean environment.
+Each workflow provisions a temporary PostgreSQL database, applies Alembic migrations, and executes the full integration test suite before changes are considered ready for deployment.
 
 Status:
 Accepted

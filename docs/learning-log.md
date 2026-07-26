@@ -177,3 +177,26 @@ Built:
 
 Git:
 test: add integration test suite for authentication and task ownership
+
+## Day 9
+
+Learned:
+- The purpose of Continuous Integration (CI) and how it differs from Continuous Deployment (CD).
+- The structure of a GitHub Actions workflow (`name`, `on`, `jobs`, `steps`, `services`, and `env`).
+- How GitHub Actions creates a clean Ubuntu runner for every workflow execution.
+- How service containers allow integration tests to run against a real PostgreSQL database.
+- Why Alembic migrations should run in CI before executing integration tests.
+- How environment variables are provided to workflows and why their names must match the application's configuration.
+- How dependency caching speeds up workflow execution without changing application behavior.
+- How to debug GitHub Actions by identifying the first meaningful error in the workflow logs.
+- Why CI validates that the application can be built and tested from scratch rather than relying on the local development environment.
+
+Built:
+- Complete GitHub Actions CI workflow.
+- Automated PostgreSQL service container for testing.
+- Automated dependency installation.
+- Automated Alembic migration execution.
+- Automated integration test execution on every push and pull request.
+
+Git:
+ci: add GitHub Actions test workflow
