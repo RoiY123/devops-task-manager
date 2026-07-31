@@ -200,3 +200,25 @@ Built:
 
 Git:
 ci: add GitHub Actions test workflow
+
+## Day 10
+
+Learned:
+- The difference between Continuous Integration (CI) and Continuous Deployment (CD).
+- How GitHub Container Registry (GHCR) enables immutable application deployments.
+- Production deployment workflow using Docker Compose on an AWS EC2 instance.
+- Basic AWS networking concepts, including Security Groups and Elastic IPs.
+- How Nginx acts as a reverse proxy and terminates HTTPS connections.
+- The TLS certificate lifecycle with Let's Encrypt and Certbot, including HTTP-01 validation and automatic certificate renewal.
+- Why production infrastructure should be documented and kept reproducible through version control.
+
+Built:
+- Automated Docker image publishing to GitHub Container Registry.
+- Production Docker Compose configuration for deployment.
+- EC2-hosted deployment using Docker Compose.
+- Nginx reverse proxy with HTTPS enabled using Let's Encrypt.
+- Automated certificate renewal script with scheduled cron execution.
+- Deployment documentation for reproducing the production environment.
+
+Git:
+feat: deploy application to AWS with HTTPS and automated certificate renewal

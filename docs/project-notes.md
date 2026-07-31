@@ -52,14 +52,19 @@ Completed:
 - Task ownership
 - Authorization for all CRUD operations
 - Environment-based configuration
+- Docker image publishing to GitHub Container Registry (GHCR)
+- AWS EC2 deployment
+- Nginx reverse proxy
+- HTTPS with Let's Encrypt
+- Automated certificate renewal
+- Production deployment documentation
 
 Current milestone:
-- GitHub Actions CI pipeline completed
+- Production deployment completed
 
 Next milestone:
-- Automated Docker image build
-- Publish Docker image to GitHub Container Registry (GHCR)
-- Deployment preparation
+- Infrastructure as Code with Terraform
+- Monitoring using Prometheus and Grafana
 
 ---
 
@@ -71,17 +76,19 @@ Developer Push
         ↓
 GitHub Actions
         ↓
-Ubuntu Runner
+Build & Test
         ↓
-PostgreSQL Service Container
+Publish Image to GHCR
         ↓
-Install Dependencies
+EC2 Server
         ↓
-Alembic Migrations
+Docker Compose
         ↓
-Integration Tests
+Nginx (HTTPS)
         ↓
-CI Pass / Fail
+FastAPI
+        ↓
+PostgreSQL
 
 Local development:
 
@@ -160,7 +167,8 @@ Accepted
 ### Configuration
 
 Decision:
-Store application configuration and secrets using environment variables. Commit a `.env.example` template while excluding `.env` from version control.
+Store application configuration and secrets using environment variables.
+Commit environment-specific templates (`.env.example`, `.env.docker.example`, and `.env.prod.example`) while excluding real environment files from version control.
 
 Status:
 Accepted
@@ -174,7 +182,7 @@ Use Docker Compose to orchestrate the FastAPI application and PostgreSQL databas
 Persist database data using a named Docker volume, isolate services on a dedicated Docker network, and execute database migrations through Alembic inside Docker containers.
 Use Docker Compose for local development with bind mounts and automatic application reloads.
 Keep the Dockerfile production-oriented while allowing Compose to override runtime behavior for development.
-Defer a dedicated production Compose configuration until the deployment phase.
+Use a separate `compose.prod.yml` configuration for production, with prebuilt GHCR images, internal-only application and database services, Nginx, and Certbot.
 
 Status:
 Accepted
@@ -204,14 +212,27 @@ Each workflow provisions a temporary PostgreSQL database, applies Alembic migrat
 Status:
 Accepted
 
+---
+
+### Production Deployment
+
+Decision:
+
+Use Docker Compose to orchestrate production services on AWS EC2.
+Terminate HTTPS with Nginx, issue TLS certificates using Let's Encrypt, and automate certificate renewal through Certbot and cron.
+Deploy prebuilt application images from GitHub Container Registry instead of building directly on the production server.
+
+Status:
+Accepted
+
 ## Next Session
 
-Begin transitioning from application development to DevOps.
+Begin managing the AWS infrastructure with Terraform.
 
 Topics:
 
-- Improve the Docker setup
-- Build a production-ready container image
-- Prepare the application for CI/CD
-- Docker Compose improvements
-- Deployment strategy
+- Terraform fundamentals
+- AWS provider configuration
+- Infrastructure state
+- Importing or reproducing the existing EC2 infrastructure
+- Planning the transition from local PostgreSQL to Amazon RDS

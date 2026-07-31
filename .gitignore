@@ -8,6 +8,7 @@ __pycache__/
 # Environment variables
 .env
 .env.docker
+.env.prod
 
 # VS Code
 .vscode/
