@@ -1,5 +1,32 @@
 # EC2 Deployment
 
+## Database
+
+Production uses Amazon RDS for PostgreSQL instead of a PostgreSQL container on the EC2 instance.
+
+The RDS database is:
+
+- Deployed privately inside the application VPC
+- Accessible on port `5432` only from the EC2 security group
+- Configured through `DATABASE_URL` in `.env.prod`
+- Initialized and upgraded using Alembic migrations
+
+The production database URL has the following structure:
+
+```text
+postgresql+psycopg://USERNAME:PASSWORD@RDS_ENDPOINT:5432/task_manager?sslmode=require
+```
+
+Run migrations from the production application image:
+
+```bash
+docker compose \
+  --env-file .env.prod \
+  -f compose.prod.yml \
+  run --rm --no-deps api \
+  alembic upgrade head
+```
+
 ## HTTPS
 
 HTTPS is terminated by Nginx using certificates issued by Let's Encrypt.

@@ -58,13 +58,16 @@ Completed:
 - HTTPS with Let's Encrypt
 - Automated certificate renewal
 - Production deployment documentation
+- Amazon RDS PostgreSQL deployment
+- Private EC2-to-RDS connectivity
+- TLS-encrypted production database connection
+- Production database migration from Docker to RDS
 
 Current milestone:
-- Production deployment completed
+- Amazon RDS migration completed
 
 Next milestone:
 - Infrastructure as Code with Terraform
-- Monitoring using Prometheus and Grafana
 
 ---
 
@@ -76,9 +79,7 @@ Developer Push
         ↓
 GitHub Actions
         ↓
-Build & Test
-        ↓
-Publish Image to GHCR
+Build, Test and Publish to GHCR
         ↓
 EC2 Server
         ↓
@@ -88,7 +89,7 @@ Nginx (HTTPS)
         ↓
 FastAPI
         ↓
-PostgreSQL
+AWS RDS PostgreSQL
 
 Local development:
 
@@ -136,6 +137,19 @@ Accepted
 
 Decision:
 Use PostgreSQL with SQLAlchemy ORM and Alembic.
+
+Status:
+Accepted
+
+---
+
+### Managed Production Database
+
+Decision:
+
+Use Amazon RDS for the production PostgreSQL database while retaining a containerized PostgreSQL service for local development.
+
+Keep RDS privately accessible inside the VPC and allow port `5432` only from the EC2 security group. Require TLS for the application database connection and apply schema changes using Alembic migrations.
 
 Status:
 Accepted

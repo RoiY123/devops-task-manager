@@ -222,3 +222,27 @@ Built:
 
 Git:
 feat: deploy application to AWS with HTTPS and automated certificate renewal
+
+## Day 11
+
+Learned:
+- The difference between self-hosted PostgreSQL and a managed Amazon RDS database.
+- How RDS DB subnet groups provide placement options across Availability Zones.
+- How security-group references restrict PostgreSQL access to approved EC2 resources.
+- Why a private RDS instance does not need public internet accessibility.
+- How database endpoints and private DNS are used by applications inside a VPC.
+- How to test database connectivity in layers: DNS, TCP port, authentication, and SQL queries.
+- How Alembic initializes an empty managed database.
+- How separating compute from persistent data reduces state on the application server.
+
+Built:
+- Private Amazon RDS PostgreSQL instance.
+- Dedicated RDS security group allowing PostgreSQL only from the EC2 security group.
+- Multi-AZ DB subnet group for RDS placement.
+- TLS-encrypted FastAPI connection to RDS.
+- RDS schema initialization using Alembic.
+- Production Compose configuration without a local PostgreSQL service.
+- Verified registration, authentication, and task CRUD operations against RDS.
+
+Git:
+feat: migrate production database to Amazon RDS
