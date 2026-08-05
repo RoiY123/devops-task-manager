@@ -41,3 +41,27 @@ resource "aws_vpc_security_group_egress_rule" "ec2_all_outbound" {
   ip_protocol = "-1"
   cidr_ipv4   = "0.0.0.0/0"
 }
+
+resource "aws_security_group" "rds" {
+  name        = "task-manager-rds-sg"
+  description = "Allow PostgreSQL access from the task manager EC2 instance"
+  vpc_id      = "vpc-00545687cefb71899"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "rds_postgresql_from_ec2" {
+  security_group_id = aws_security_group.rds.id
+
+  description                  = "Allow PostgreSQL from the task manager EC2 security group"
+  ip_protocol                  = "tcp"
+  from_port                    = 5432
+  to_port                      = 5432
+  referenced_security_group_id = aws_security_group.ec2.id
+}
+
+resource "aws_vpc_security_group_egress_rule" "rds_all_outbound" {
+  security_group_id = aws_security_group.rds.id
+
+  description = "Allow all outbound traffic"
+  ip_protocol = "-1"
+  cidr_ipv4   = "0.0.0.0/0"
+}
