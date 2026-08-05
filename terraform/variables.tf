@@ -21,3 +21,13 @@ variable "environment" {
   type        = string
   default     = "production"
 }
+
+variable "ssh_allowed_cidr" {
+  description = "Public IPv4 CIDR allowed to connect to the EC2 instance over SSH"
+  type        = string
+
+  validation {
+    condition     = can(cidrnetmask(var.ssh_allowed_cidr)) && endswith(var.ssh_allowed_cidr, "/32")
+    error_message = "ssh_allowed_cidr must be a valid single-host IPv4 CIDR ending in /32."
+  }
+}
