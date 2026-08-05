@@ -22,7 +22,7 @@ resource "aws_instance" "app" {
   }
 
   tags = {
-    Name = "task-manager-dev"
+    Name = "task-manager-prod-api"
   }
 
   lifecycle {
@@ -32,6 +32,10 @@ resource "aws_instance" "app" {
 
 resource "aws_eip" "app" {
   domain = "vpc"
+
+  tags = {
+    Name = "task-manager-prod-eip"
+  }
 
   lifecycle {
     prevent_destroy = true

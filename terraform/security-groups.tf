@@ -2,6 +2,10 @@ resource "aws_security_group" "ec2" {
   name        = "task-manager-sg"
   description = "task-manager-sg created 2026-07-28T16:19:09.627Z"
   vpc_id      = "vpc-00545687cefb71899"
+
+  tags = {
+    Name = "task-manager-prod-ec2-sg"
+  }
 }
 
 resource "aws_vpc_security_group_ingress_rule" "ec2_http" {
@@ -46,6 +50,10 @@ resource "aws_security_group" "rds" {
   name        = "task-manager-rds-sg"
   description = "Allow PostgreSQL access from the task manager EC2 instance"
   vpc_id      = "vpc-00545687cefb71899"
+
+  tags = {
+    Name = "task-manager-prod-rds-sg"
+  }
 }
 
 resource "aws_vpc_security_group_ingress_rule" "rds_postgresql_from_ec2" {
