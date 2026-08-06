@@ -31,3 +31,13 @@ variable "ssh_allowed_cidr" {
     error_message = "ssh_allowed_cidr must be a valid single-host IPv4 CIDR ending in /32."
   }
 }
+
+variable "db_name" {
+  description = "Name of the application database in the production RDS instance"
+  type        = string
+}
+
+variable "db_master_username" {
+  description = "Master username of the production RDS instance"
+  type        = string
+}
