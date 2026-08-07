@@ -246,3 +246,30 @@ Built:
 
 Git:
 feat: migrate production database to Amazon RDS
+
+## Day 12
+
+Learned:
+- Terraform fundamentals, including providers, resources, data sources, variables, state, and the plan/apply workflow.
+- Why existing AWS resources must be imported before Terraform can manage them safely.
+- How to adopt existing infrastructure incrementally and verify each import with a clean Terraform plan.
+- The difference between Terraform-managed resources and existing infrastructure referenced through data sources.
+- Why shared AWS networking such as the default VPC and default subnets should be referenced rather than unnecessarily owned by the application Terraform state.
+- How Terraform resource references create dependency relationships between infrastructure components.
+- How lifecycle protection with `prevent_destroy` protects critical infrastructure from accidental replacement or deletion.
+- Why remote Terraform state is safer than local state for important infrastructure.
+- How to bootstrap an S3 backend separately before migrating the main Terraform state.
+
+Built:
+- Terraform AWS provider configuration for the production environment.
+- Remote Terraform state backend using Amazon S3 with versioning, encryption, public-access protection, and state locking.
+- Terraform management of the EC2 and RDS security groups and their ingress and egress rules.
+- Terraform management of the existing EC2 application server and the production Elastic IP and its EC2 association.
+- Terraform management of the Amazon RDS PostgreSQL instance and the RDS DB subnet group.
+- Production resource tagging with consistent project, environment, management, and resource-name metadata.
+- Terraform data sources for the existing default AWS VPC and Availability Zone subnets.
+- Dependency references between EC2, security groups, RDS, subnet groups, and shared AWS networking.
+
+Git:
+feat: manage RDS database with Terraform
+refactor: reference existing AWS networking with data sources

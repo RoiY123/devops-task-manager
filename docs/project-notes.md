@@ -62,12 +62,16 @@ Completed:
 - Private EC2-to-RDS connectivity
 - TLS-encrypted production database connection
 - Production database migration from Docker to RDS
+- Infrastructure as Code with Terraform
+- Remote Terraform state in Amazon S3
+- Terraform-managed EC2, Elastic IP, security groups, RDS, and DB subnet group
+- Existing AWS VPC and subnets referenced through Terraform data sources
 
 Current milestone:
-- Amazon RDS migration completed
+- Infrastructure as Code with Terraform completed
 
 Next milestone:
-- Infrastructure as Code with Terraform
+- Monitoring and observability
 
 ---
 
@@ -104,6 +108,22 @@ Local development:
   PostgreSQL Container
         ↓
   Named Docker Volume
+
+Infrastructure management:
+
+  Terraform
+      ↓
+  Remote State (Amazon S3)
+      ↓
+  AWS Infrastructure:
+  * Existing Default VPC and Subnets (data sources)
+  * EC2 Security Group
+  * EC2 Application Server
+  * Elastic IP
+  * RDS Security Group
+  * RDS DB Subnet Group
+  * Amazon RDS PostgreSQL
+
 
 ---
 
@@ -239,14 +259,29 @@ Deploy prebuilt application images from GitHub Container Registry instead of bui
 Status:
 Accepted
 
+---
+
+### Infrastructure as Code
+
+Decision:
+
+Use Terraform to manage project-specific AWS infrastructure, including EC2, Elastic IPs, security groups, the RDS DB subnet group, and the production RDS PostgreSQL instance.
+Store the main Terraform state remotely in a private Amazon S3 bucket with versioning, encryption, public-access blocking, and state locking.
+Treat the AWS default VPC and default subnets as existing shared infrastructure and reference them using Terraform data sources rather than importing their lifecycle into the project's Terraform state.
+Adopt existing production resources incrementally using Terraform import and require a reviewed, non-destructive plan before applying infrastructure changes.
+
+Status:
+Accepted
+
 ## Next Session
 
-Begin managing the AWS infrastructure with Terraform.
+Begin the monitoring and observability milestone.
 
 Topics:
 
-- Terraform fundamentals
-- AWS provider configuration
-- Infrastructure state
-- Importing or reproducing the existing EC2 infrastructure
-- Planning the transition from local PostgreSQL to Amazon RDS
+- Define monitoring goals for the application and infrastructure
+- Application and infrastructure metrics
+- Prometheus fundamentals
+- Grafana dashboards
+- Health and availability monitoring
+- Alerting strategy
