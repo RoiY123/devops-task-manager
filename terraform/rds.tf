@@ -3,9 +3,9 @@ resource "aws_db_subnet_group" "production" {
   description = "Subnets for the task manager PostgreSQL database"
 
   subnet_ids = [
-    "subnet-0cf38689aeac8aeb2",
-    "subnet-03e021df4a8b0a285",
-    "subnet-0bdd2e1360001f9b8",
+    data.aws_subnet.default_1a.id,
+    data.aws_subnet.default_1b.id,
+    data.aws_subnet.default_1c.id,
   ]
 
   tags = {
