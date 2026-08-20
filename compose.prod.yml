@@ -29,6 +29,19 @@ services:
       - certbot_webroot:/var/www/certbot
       - certbot_certs:/etc/letsencrypt
 
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+
+    network_mode: host
+    pid: host
+
+    volumes:
+      - "/:/host:ro,rslave"
+
+    command:
+      - "--path.rootfs=/host"
+
 volumes:
   certbot_webroot:
   certbot_certs:
