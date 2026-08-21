@@ -10,6 +10,9 @@ services:
       JWT_ALGORITHM: ${JWT_ALGORITHM}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
 
+    ports:
+      - "8000:8000"
+
   nginx:
     image: nginx:1.28-alpine
     restart: unless-stopped

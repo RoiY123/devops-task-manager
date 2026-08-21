@@ -46,3 +46,33 @@ resource "aws_eip_association" "app" {
   allocation_id = aws_eip.app.id
   instance_id   = aws_instance.app.id
 }
+
+resource "aws_instance" "monitoring" {
+  ami           = "ami-0d3dfbd3aedad5847"
+  instance_type = "t3.small"
+  key_name      = "task-manager-key"
+  subnet_id     = data.aws_subnet.default_1a.id
+
+  associate_public_ip_address = true
+
+  vpc_security_group_ids = [
+    aws_security_group.monitoring.id
+  ]
+
+  monitoring                  = false
+  source_dest_check           = true
+  disable_api_termination     = false
+  ebs_optimized               = true
+  user_data_replace_on_change = false
+
+  root_block_device {
+    volume_size           = 20
+    volume_type           = "gp3"
+    encrypted             = true
+    delete_on_termination = true
+  }
+
+  tags = {
+    Name = "task-manager-prod-monitoring"
+  }
+}
