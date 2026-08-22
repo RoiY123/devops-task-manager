@@ -1,6 +1,7 @@
-from contextlib import asynccontextmanager
-
+import os
 import time
+
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
@@ -14,6 +15,10 @@ from app.backend.monitoring import (
     HTTP_REQUESTS_TOTAL,
 )
 
+
+ENABLE_DOCS = os.getenv("ENABLE_DOCS", "true").lower() == "true"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     check_database_connection()
@@ -23,6 +28,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DevOps Task Manager API",
     lifespan=lifespan,
+    docs_url="/docs" if ENABLE_DOCS else None,
+    redoc_url="/redoc" if ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if ENABLE_DOCS else None,
 )
 
 
@@ -51,6 +59,8 @@ async def collect_http_metrics(request: Request, call_next):
 
         if route is not None:
             endpoint = route.path
+        elif response.status_code == 404:
+            endpoint = "unmatched"
         else:
             endpoint = request.url.path
 
