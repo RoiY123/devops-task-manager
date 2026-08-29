@@ -273,3 +273,39 @@ Built:
 Git:
 feat: manage RDS database with Terraform
 refactor: reference existing AWS networking with data sources
+
+## Day 13
+
+Learned:
+- Prometheus metric types and how application metrics are exposed through a `/metrics` endpoint.
+- How Prometheus scrapes application, infrastructure, and self-monitoring targets.
+- How counters, gauges, and histograms are used for request rate, latency, in-progress requests, CPU, memory, filesystem, and network monitoring.
+- Why high-cardinality metric labels should be avoided and how unmatched HTTP routes can be grouped safely.
+- How Grafana uses Prometheus as a data source to visualize application and infrastructure metrics.
+- How Grafana dashboard provisioning allows dashboards to be managed as code instead of edited directly in production.
+- How Node Exporter exposes Linux host metrics for CPU, memory, filesystem, load, network traffic, and availability.
+- Why a separate monitoring server can continue observing the application host when the application itself becomes unavailable.
+- How Prometheus alert rules use expressions and `for` durations to distinguish sustained problems from temporary spikes.
+- The difference between Prometheus alert evaluation and Alertmanager notification delivery.
+- How Alertmanager routes alerts, sends firing and resolved notifications, and suppresses notifications using silences during planned maintenance.
+- How Gmail SMTP authentication works with Google App Passwords instead of a normal account password.
+- How secret-bearing runtime configuration can be generated from tracked templates and ignored environment files.
+
+Built:
+- FastAPI Prometheus instrumentation for request count, request duration, and in-progress requests.
+- `/metrics` endpoint for Prometheus scraping.
+- Route normalization for HTTP metrics, including safe grouping of unmatched requests.
+- Environment-controlled FastAPI documentation, enabled for development and disabled in production.
+- Production Prometheus server running on a dedicated monitoring EC2 instance.
+- Node Exporter on the application EC2 instance.
+- Prometheus scrape jobs for FastAPI, Node Exporter, and Prometheus itself.
+- Provisioned Grafana Application and Host Overview dashboards.
+- Application monitoring for request rate, P95 latency, active requests, and target availability.
+- Host monitoring for CPU, memory, root filesystem usage, load average, network traffic, and Node Exporter availability.
+- Prometheus alert rules for FastAPI availability, Node Exporter availability, high CPU usage, high memory usage, and high root filesystem usage.
+- Alertmanager service with persistent runtime state.
+- Gmail alert delivery for firing and resolved alerts.
+- Private SMTP configuration using `.env.monitoring` and a tracked Alertmanager configuration template.
+
+Git:
+feat: add production monitoring alerts

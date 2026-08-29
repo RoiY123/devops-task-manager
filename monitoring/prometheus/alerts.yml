@@ -1,0 +1,82 @@
+groups:
+  - name: task-manager-alerts
+    rules:
+      - alert: FastAPITargetDown
+        expr: up{job="fastapi"} == 0
+        for: 1m
+
+        labels:
+          severity: critical
+
+        annotations:
+          summary: "FastAPI target is down"
+          description: "Prometheus has been unable to scrape the FastAPI target for more than 1 minute."
+
+      - alert: NodeExporterTargetDown
+        expr: up{job="node-exporter"} == 0
+        for: 1m
+
+        labels:
+          severity: critical
+
+        annotations:
+          summary: "Node Exporter target is down"
+          description: "Prometheus has been unable to scrape the Node Exporter target for more than 1 minute."
+
+      - alert: HighCPUUsage
+        expr: |
+          100 * (
+            1 - avg by (instance) (
+              rate(node_cpu_seconds_total{job="node-exporter", mode="idle"}[5m])
+            )
+          ) > 85
+        for: 5m
+
+        labels:
+          severity: warning
+
+        annotations:
+          summary: "High CPU usage"
+          description: "EC2 CPU usage has been above 85% for more than 5 minutes."
+
+      - alert: HighMemoryUsage
+        expr: |
+          100 * (
+            1 -
+            node_memory_MemAvailable_bytes{job="node-exporter"}
+            /
+            node_memory_MemTotal_bytes{job="node-exporter"}
+          ) > 90
+        for: 5m
+
+        labels:
+          severity: warning
+
+        annotations:
+          summary: "High memory usage"
+          description: "EC2 memory usage has been above 90% for more than 5 minutes."
+
+      - alert: RootFilesystemUsageHigh
+        expr: |
+          100 * (
+            1 -
+            node_filesystem_avail_bytes{
+              job="node-exporter",
+              mountpoint="/",
+              fstype!="rootfs"
+            }
+            /
+            node_filesystem_size_bytes{
+              job="node-exporter",
+              mountpoint="/",
+              fstype!="rootfs"
+            }
+          ) > 85
+        for: 5m
+
+        labels:
+          severity: warning
+
+        annotations:
+          summary: "Root filesystem usage is high"
+          description: "Root filesystem usage has been above 85% for more than 5 minutes."

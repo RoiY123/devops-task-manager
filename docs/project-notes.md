@@ -33,6 +33,8 @@ Infrastructure:
 Monitoring:
 - Prometheus
 - Grafana
+- Node Exporter
+- Alertmanager
 
 ---
 
@@ -66,12 +68,22 @@ Completed:
 - Remote Terraform state in Amazon S3
 - Terraform-managed EC2, Elastic IP, security groups, RDS, and DB subnet group
 - Existing AWS VPC and subnets referenced through Terraform data sources
+- FastAPI Prometheus instrumentation
+- Prometheus metrics endpoint
+- Production Prometheus monitoring
+- Dedicated monitoring EC2 instance
+- Node Exporter host monitoring
+- Grafana application and host monitoring dashboards
+- Dashboard provisioning from version-controlled JSON
+- Prometheus alert rules
+- Alertmanager notification routing
+- Gmail firing and resolved alert notifications
 
 Current milestone:
-- Infrastructure as Code with Terraform completed
+- Monitoring and observability completed
 
 Next milestone:
-- Monitoring and observability
+- Continuous Deployment automation
 
 ---
 
@@ -117,13 +129,37 @@ Infrastructure management:
       ↓
   AWS Infrastructure:
   * Existing Default VPC and Subnets (data sources)
-  * EC2 Security Group
-  * EC2 Application Server
+  * EC2 Security Groups
+  * EC2 Application and Monitoring Servers
   * Elastic IP
   * RDS Security Group
   * RDS DB Subnet Group
   * Amazon RDS PostgreSQL
 
+Production monitoring:
+
+  Monitoring EC2
+      ↓
+  Docker Compose
+      ↓
+  Prometheus:
+* FastAPI metrics on application EC2
+* Node Exporter metrics on application EC2
+* Prometheus self-monitoring
+      ↓
+  Grafana
+      ↓
+  Provisioned Application and Host dashboards
+
+  Alerting:
+
+  Prometheus Alert Rules
+        ↓
+  Alertmanager
+        ↓
+  Gmail Notifications
+        ↓
+  Firing and Resolved Alerts
 
 ---
 
@@ -273,15 +309,32 @@ Adopt existing production resources incrementally using Terraform import and req
 Status:
 Accepted
 
+---
+
+### Monitoring and Alerting
+
+Decision:
+
+Use Prometheus for application and infrastructure metrics, Grafana for visualization, Node Exporter for Linux host metrics, and Alertmanager for alert routing and notification delivery.
+Run Prometheus, Grafana, and Alertmanager on a dedicated monitoring EC2 instance so monitoring remains independent from the application host during application failures.
+Manage Grafana dashboards through version-controlled provisioning files rather than direct production UI changes.
+Use Prometheus alert rules for application availability, host monitoring availability, CPU, memory, and filesystem usage. Route firing and resolved notifications through Alertmanager using Gmail SMTP.
+Store real monitoring secrets only in the ignored `.env.monitoring` runtime file. Keep the Alertmanager configuration structure in a tracked template and generate the secret-bearing runtime configuration on the monitoring host.
+
+Status:
+Accepted
+
 ## Next Session
 
-Begin the monitoring and observability milestone.
+Begin the Continuous Deployment automation milestone.
 
 Topics:
 
-- Define monitoring goals for the application and infrastructure
-- Application and infrastructure metrics
-- Prometheus fundamentals
-- Grafana dashboards
-- Health and availability monitoring
-- Alerting strategy
+- GitHub Actions deployment workflow
+- AWS authentication from GitHub Actions using OIDC
+- IAM roles and least-privilege deployment permissions
+- AWS Systems Manager for remote deployment commands
+- Automated application deployment to EC2
+- Automated monitoring configuration deployment
+- Production configuration and secret handling during deployment
+- Deployment validation and failure handling
