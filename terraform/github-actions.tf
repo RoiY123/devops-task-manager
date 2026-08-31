@@ -39,7 +39,7 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
       variable = "token.actions.githubusercontent.com:sub"
 
       values = [
-        "repo:RoiY123/devops-task-manager:ref:refs/heads/main"
+        "repo:RoiY123@252551300/devops-task-manager@1303006579:ref:refs/heads/main"
       ]
     }
   }
