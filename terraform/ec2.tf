@@ -1,8 +1,9 @@
 resource "aws_instance" "app" {
-  ami           = "ami-0d3dfbd3aedad5847"
-  instance_type = "t3.micro"
-  key_name      = "task-manager-key"
-  subnet_id     = data.aws_subnet.default_1b.id
+  ami                  = "ami-0d3dfbd3aedad5847"
+  instance_type        = "t3.micro"
+  key_name             = "task-manager-key"
+  subnet_id            = data.aws_subnet.default_1b.id
+  iam_instance_profile = aws_iam_instance_profile.app.name
 
   vpc_security_group_ids = [
     aws_security_group.ec2.id
