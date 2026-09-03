@@ -138,13 +138,8 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --comment "Deploy task-manager API from GitHub Actions" \
             --parameters "commands=[
-              \"set -e\",
-              \"curl -fSL https://raw.githubusercontent.com/RoiY123/devops-task-manager/${COMMIT_SHA}/compose.prod.yml -o /tmp/compose.prod.yml\",
-              \"install -o ubuntu -g ubuntu -m 0644 /tmp/compose.prod.yml /home/ubuntu/task-manager/compose.prod.yml\",
-              \"rm -f /tmp/compose.prod.yml\",
-              \"cd /home/ubuntu/task-manager\",
-              \"IMAGE_TAG=${IMAGE_TAG} docker compose --env-file .env.prod -f compose.prod.yml pull api\",
-              \"IMAGE_TAG=${IMAGE_TAG} docker compose --env-file .env.prod -f compose.prod.yml up -d --no-deps api\"
+              \"curl -fSL https://raw.githubusercontent.com/RoiY123/devops-task-manager/${COMMIT_SHA}/scripts/deploy-app.sh -o /tmp/deploy-app.sh\",
+              \"COMMIT_SHA=${COMMIT_SHA} IMAGE_TAG=${IMAGE_TAG} bash /tmp/deploy-app.sh; STATUS=\$?; rm -f /tmp/deploy-app.sh; exit \$STATUS\"
             ]" \
             --query "Command.CommandId" \
             --output text)
