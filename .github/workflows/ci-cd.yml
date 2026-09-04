@@ -154,6 +154,11 @@ jobs:
             --query "Reservations[0].Instances[0].InstanceId" \
             --output text)
 
+          if [[ -z "$APP_INSTANCE_ID" || "$APP_INSTANCE_ID" == "None" ]]; then
+            echo "ERROR: Failed to resolve app EC2 instance ID."
+            exit 1
+          fi
+
           if [[ -z "$APP_PRIVATE_IP" || "$APP_PRIVATE_IP" == "None" ]]; then
             echo "ERROR: Failed to resolve app EC2 private IP."
             exit 1
@@ -164,10 +169,12 @@ jobs:
             exit 1
           fi
 
+          echo "APP_INSTANCE_ID=$APP_INSTANCE_ID" >> "$GITHUB_ENV"
           echo "APP_PRIVATE_IP=$APP_PRIVATE_IP" >> "$GITHUB_ENV"
           echo "MONITORING_INSTANCE_ID=$MONITORING_INSTANCE_ID" >> "$GITHUB_ENV"
 
           echo "Resolved app private IP: $APP_PRIVATE_IP"
+          echo "Resolved app instance: $APP_INSTANCE_ID"
           echo "Resolved monitoring instance: $MONITORING_INSTANCE_ID"
 
       - name: Deploy application with SSM
