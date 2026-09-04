@@ -131,10 +131,49 @@ jobs:
       - name: Verify AWS identity
         run: aws sts get-caller-identity
 
+      - name: Resolve deplyoment values
+        run: |
+          APP_INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters \
+              "Name=tag:Name,Values=task-manager-prod-api" \
+              "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" \
+            --output text)
+
+          APP_PRIVATE_IP=$(aws ec2 describe-instances \
+            --filters \
+              "Name=tag:Name,Values=task-manager-prod-api" \
+              "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].PrivateIpAddress" \
+            --output text)
+
+          MONITORING_INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters \
+              "Name=tag:Name,Values=task-manager-prod-monitoring" \
+              "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].InstanceId" \
+            --output text)
+
+          if [[ -z "$APP_PRIVATE_IP" || "$APP_PRIVATE_IP" == "None" ]]; then
+            echo "ERROR: Failed to resolve app EC2 private IP."
+            exit 1
+          fi
+
+          if [[ -z "$MONITORING_INSTANCE_ID" || "$MONITORING_INSTANCE_ID" == "None" ]]; then
+            echo "ERROR: Failed to resolve monitoring EC2 instance ID."
+            exit 1
+          fi
+
+          echo "APP_PRIVATE_IP=$APP_PRIVATE_IP" >> "$GITHUB_ENV"
+          echo "MONITORING_INSTANCE_ID=$MONITORING_INSTANCE_ID" >> "$GITHUB_ENV"
+
+          echo "Resolved app private IP: $APP_PRIVATE_IP"
+          echo "Resolved monitoring instance: $MONITORING_INSTANCE_ID"
+
       - name: Deploy application with SSM
         run: |
           COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "i-0f7b50d068bca0c7a" \
+            --instance-ids "$APP_INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy task-manager API from GitHub Actions" \
             --parameters "commands=[
@@ -148,20 +187,20 @@ jobs:
 
           if ! aws ssm wait command-executed \
             --command-id "$COMMAND_ID" \
-            --instance-id "i-0f7b50d068bca0c7a"; then
+            --instance-id "$APP_INSTANCE_ID"; then
 
             echo "SSM deployment command failed."
 
             aws ssm get-command-invocation \
               --command-id "$COMMAND_ID" \
-              --instance-id "i-0f7b50d068bca0c7a"
+              --instance-id "$APP_INSTANCE_ID"
 
             exit 1
           fi
 
           aws ssm get-command-invocation \
             --command-id "$COMMAND_ID" \
-            --instance-id "i-0f7b50d068bca0c7a"
+            --instance-id "$APP_INSTANCE_ID"
 
       - name: Verify production health
         run: |
@@ -178,3 +217,35 @@ jobs:
 
           echo "Production health check failed."
           exit 1
+
+      - name: Deploy monitoring with SSM
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$MONITORING_INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy task-manager monitoring from GitHub Actions" \
+            --parameters "commands=[
+              \"curl -fSL https://raw.githubusercontent.com/RoiY123/devops-task-manager/${COMMIT_SHA}/scripts/deploy-monitoring.sh -o /tmp/deploy-monitoring.sh\",
+              \"COMMIT_SHA=${COMMIT_SHA} APP_PRIVATE_IP=${APP_PRIVATE_IP} bash /tmp/deploy-monitoring.sh; STATUS=\$?; rm -f /tmp/deploy-monitoring.sh; exit \$STATUS\"
+            ]" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM command ID: $COMMAND_ID"
+
+          if ! aws ssm wait command-executed \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$MONITORING_INSTANCE_ID"; then
+
+            echo "SSM monitoring deployment command failed."
+
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$MONITORING_INSTANCE_ID"
+
+            exit 1
+          fi
+
+          aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$MONITORING_INSTANCE_ID"

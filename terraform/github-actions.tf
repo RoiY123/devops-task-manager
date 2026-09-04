@@ -81,6 +81,18 @@ data "aws_iam_policy_document" "github_actions_deploy" {
       "*"
     ]
   }
+
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "ec2:DescribeInstances"
+    ]
+
+    resources = [
+      "*"
+    ]
+  }
 }
 
 # Creates the permission policy as a customer-managed IAM policy in this AWS account
