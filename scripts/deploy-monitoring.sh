@@ -113,9 +113,10 @@ envsubst \
 
 # Validate the generated Alertmanager configuration before installing it.
 docker run --rm \
+  --entrypoint /bin/amtool \
   -v "$TMP_DIR/alertmanager.yml:/tmp/alertmanager.yml:ro" \
   prom/alertmanager:v0.33.1 \
-  amtool check-config /tmp/alertmanager.yml
+  check-config /tmp/alertmanager.yml
 
 install -o ubuntu -g ubuntu -m 0600 \
   "$TMP_DIR/alertmanager.yml" \
