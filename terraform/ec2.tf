@@ -49,10 +49,11 @@ resource "aws_eip_association" "app" {
 }
 
 resource "aws_instance" "monitoring" {
-  ami           = "ami-0d3dfbd3aedad5847"
-  instance_type = "t3.small"
-  key_name      = "task-manager-key"
-  subnet_id     = data.aws_subnet.default_1a.id
+  ami                  = "ami-0d3dfbd3aedad5847"
+  instance_type        = "t3.small"
+  key_name             = "task-manager-key"
+  subnet_id            = data.aws_subnet.default_1a.id
+  iam_instance_profile = aws_iam_instance_profile.monitoring.name
 
   associate_public_ip_address = true
 

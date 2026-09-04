@@ -53,7 +53,7 @@ resource "aws_iam_role" "github_actions_deploy" {
 }
 
 # Permission policy: defines what the github deployment role is allowed to do
-# allows SSM commands only against the application EC2 and allows reading command results
+# allows SSM commands only against the application and monitoring EC2 and allows reading command results
 data "aws_iam_policy_document" "github_actions_deploy" {
   statement {
     effect = "Allow"
@@ -64,6 +64,7 @@ data "aws_iam_policy_document" "github_actions_deploy" {
 
     resources = [
       aws_instance.app.arn,
+      aws_instance.monitoring.arn,
       "arn:aws:ssm:il-central-1::document/AWS-RunShellScript"
     ]
   }
@@ -82,7 +83,7 @@ data "aws_iam_policy_document" "github_actions_deploy" {
   }
 }
 
-# Creates the permission policy as a real AWS managed IAM policy
+# Creates the permission policy as a customer-managed IAM policy in this AWS account
 resource "aws_iam_policy" "github_actions_deploy" {
   name = "task-manager-github-deploy"
 
