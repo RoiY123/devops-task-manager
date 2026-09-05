@@ -184,6 +184,8 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --comment "Deploy task-manager API from GitHub Actions" \
             --parameters "commands=[
+              \"curl -fSL https://raw.githubusercontent.com/RoiY123/devops-task-manager/${COMMIT_SHA}/scripts/ensure-instance-prerequisites.sh -o /tmp/ensure-instance-prerequisites.sh",
+              \"bash /tmp/ensure-instance-prerequisites.sh; STATUS=\$?; rm -f /tmp/ensure-instance-prerequisites.sh; if [ \$STATUS -ne 0 ]; then exit \$STATUS; fi",
               \"curl -fSL https://raw.githubusercontent.com/RoiY123/devops-task-manager/${COMMIT_SHA}/scripts/deploy-app.sh -o /tmp/deploy-app.sh\",
               \"COMMIT_SHA=${COMMIT_SHA} IMAGE_TAG=${IMAGE_TAG} bash /tmp/deploy-app.sh; STATUS=\$?; rm -f /tmp/deploy-app.sh; exit \$STATUS\"
             ]" \
@@ -232,6 +234,8 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --comment "Deploy task-manager monitoring from GitHub Actions" \
             --parameters "commands=[
+              \"curl -fSL https://raw.githubusercontent.com/RoiY123/devops-task-manager/${COMMIT_SHA}/scripts/ensure-instance-prerequisites.sh -o /tmp/ensure-instance-prerequisites.sh",
+              \"bash /tmp/ensure-instance-prerequisites.sh; STATUS=\$?; rm -f /tmp/ensure-instance-prerequisites.sh; if [ \$STATUS -ne 0 ]; then exit \$STATUS; fi",
               \"curl -fSL https://raw.githubusercontent.com/RoiY123/devops-task-manager/${COMMIT_SHA}/scripts/deploy-monitoring.sh -o /tmp/deploy-monitoring.sh\",
               \"COMMIT_SHA=${COMMIT_SHA} APP_PRIVATE_IP=${APP_PRIVATE_IP} bash /tmp/deploy-monitoring.sh; STATUS=\$?; rm -f /tmp/deploy-monitoring.sh; exit \$STATUS\"
             ]" \
