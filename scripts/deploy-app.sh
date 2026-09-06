@@ -125,6 +125,17 @@ install -o ubuntu -g ubuntu -m 0755 \
 
 cd "$PROJECT_DIR"
 
+# Pull and reconcile the API first so Nginx can resolve the "api" upstream.
+IMAGE_TAG="$IMAGE_TAG" docker compose \
+  --env-file .env.prod \
+  -f compose.prod.yml \
+  pull api
+
+IMAGE_TAG="$IMAGE_TAG" docker compose \
+  --env-file .env.prod \
+  -f compose.prod.yml \
+  up -d api
+
 # Validate the new Nginx configuration before loading it.
 if ! docker compose \
   --env-file .env.prod \
@@ -153,21 +164,19 @@ docker compose \
   -f compose.prod.yml \
   exec -T nginx nginx -s reload
 
-# Pull the images required by the long-running production services.
+# Pull the remaining long-running service images.
 IMAGE_TAG="$IMAGE_TAG" docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
   pull \
-  api \
   nginx \
   node-exporter
 
-# Reconcile the long-running production services with compose.prod.yml.
+# Reconcile the remaining long-running production services.
 IMAGE_TAG="$IMAGE_TAG" docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
   up -d \
-  api \
   nginx \
   node-exporter
 
