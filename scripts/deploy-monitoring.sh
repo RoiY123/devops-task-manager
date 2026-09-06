@@ -143,6 +143,7 @@ docker run --rm \
   prom/alertmanager:v0.33.1 \
   check-config /tmp/alertmanager.yml
 
+# Alertmanager v0.33.1 runs as UID/GID 65534 (nobody).
 install -o 65534 -g 65534 -m 0600 \
   "$TMP_DIR/alertmanager.yml" \
   "$PROJECT_DIR/monitoring/alertmanager/alertmanager.yml"
