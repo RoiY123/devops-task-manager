@@ -143,7 +143,7 @@ docker run --rm \
   prom/alertmanager:v0.33.1 \
   check-config /tmp/alertmanager.yml
 
-install -o ubuntu -g ubuntu -m 0600 \
+install -o 65534 -g 65534 -m 0600 \
   "$TMP_DIR/alertmanager.yml" \
   "$PROJECT_DIR/monitoring/alertmanager/alertmanager.yml"
 
@@ -159,4 +159,28 @@ docker compose \
   -f compose.monitoring.prod.yml \
   up -d
 
-echo "Monitoring deployment completed successfully."
+# Verify that all monitoring services become ready after deployment.
+for attempt in {1..12}; do
+  if curl --fail --silent --show-error --output /dev/null \
+      http://127.0.0.1:9090/-/ready \
+    && curl --fail --silent --show-error --output /dev/null \
+      http://127.0.0.1:3000/api/health \
+    && curl --fail --silent --show-error --output /dev/null \
+      http://127.0.0.1:9093/-/ready
+  then
+    echo "Monitoring services are ready."
+    echo "Monitoring deployment completed successfully."
+    exit 0
+  fi
+
+  echo "Monitoring readiness check attempt $attempt failed. Retrying..."
+  sleep 5
+done
+
+echo "ERROR: Monitoring services did not become ready."
+docker compose \
+  --env-file .env.monitoring \
+  -f compose.monitoring.prod.yml \
+  ps
+
+exit 1
