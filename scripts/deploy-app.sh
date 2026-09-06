@@ -49,6 +49,60 @@ curl -fSL \
   "$REPO_RAW_URL/$COMMIT_SHA/scripts/renew-certificates.sh" \
   -o "$TMP_DIR/renew-certificates.sh"
 
+echo "Generating .env.prod from Parameter Store..."
+
+DATABASE_URL="$(aws ssm get-parameter \
+  --region il-central-1 \
+  --name "/task-manager/prod/app/DATABASE_URL" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text)"
+
+JWT_SECRET_KEY="$(aws ssm get-parameter \
+  --region il-central-1 \
+  --name "/task-manager/prod/app/JWT_SECRET_KEY" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text)"
+
+JWT_ALGORITHM="$(aws ssm get-parameter \
+  --region il-central-1 \
+  --name "/task-manager/prod/app/JWT_ALGORITHM" \
+  --query "Parameter.Value" \
+  --output text)"
+
+ACCESS_TOKEN_EXPIRE_MINUTES="$(aws ssm get-parameter \
+  --region il-central-1 \
+  --name "/task-manager/prod/app/ACCESS_TOKEN_EXPIRE_MINUTES" \
+  --query "Parameter.Value" \
+  --output text)"
+
+ENABLE_DOCS="$(aws ssm get-parameter \
+  --region il-central-1 \
+  --name "/task-manager/prod/app/ENABLE_DOCS" \
+  --query "Parameter.Value" \
+  --output text)"
+
+{
+  printf 'DATABASE_URL=%s\n' "$DATABASE_URL"
+  printf 'JWT_SECRET_KEY=%s\n' "$JWT_SECRET_KEY"
+  printf 'JWT_ALGORITHM=%s\n' "$JWT_ALGORITHM"
+  printf 'ACCESS_TOKEN_EXPIRE_MINUTES=%s\n' "$ACCESS_TOKEN_EXPIRE_MINUTES"
+  printf 'ENABLE_DOCS=%s\n' "$ENABLE_DOCS"
+  printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG"
+} > "$TMP_DIR/.env.prod"
+
+install -o ubuntu -g ubuntu -m 0600 \
+  "$TMP_DIR/.env.prod" \
+  "$PROJECT_DIR/.env.prod"
+
+unset \
+  DATABASE_URL \
+  JWT_SECRET_KEY \
+  JWT_ALGORITHM \
+  ACCESS_TOKEN_EXPIRE_MINUTES \
+  ENABLE_DOCS
+
 # Install tracked runtime files with explicit ownership and permissions.
 install -o ubuntu -g ubuntu -m 0644 \
   "$TMP_DIR/compose.prod.yml" \

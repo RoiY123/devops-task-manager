@@ -24,17 +24,16 @@ echo "Deploying monitoring configuration from commit: $COMMIT_SHA"
 echo "Using app private IP: $APP_PRIVATE_IP"
 
 # Ensure the expected runtime directory structure exists.
-mkdir -p \
+install -d -o ubuntu -g ubuntu -m 0755 \
+  "$PROJECT_DIR" \
+  "$PROJECT_DIR/monitoring" \
   "$PROJECT_DIR/monitoring/prometheus" \
+  "$PROJECT_DIR/monitoring/grafana" \
+  "$PROJECT_DIR/monitoring/grafana/provisioning" \
   "$PROJECT_DIR/monitoring/grafana/provisioning/dashboards" \
   "$PROJECT_DIR/monitoring/grafana/provisioning/datasources" \
   "$PROJECT_DIR/monitoring/grafana/dashboards" \
   "$PROJECT_DIR/monitoring/alertmanager"
-
-chown -R ubuntu:ubuntu \
-  "$PROJECT_DIR/monitoring"
-
-find "$PROJECT_DIR/monitoring" -type d -exec chmod 0755 {} \;
 
 # Download tracked monitoring files from the exact Git commit.
 curl -fSL \
@@ -102,14 +101,40 @@ install -o ubuntu -g ubuntu -m 0644 \
   "$TMP_DIR/alertmanager.template.yml" \
   "$PROJECT_DIR/monitoring/alertmanager/alertmanager.template.yml"
 
-# Regenerate the runtime Alertmanager configuration from the tracked template.
-set -a
-source "$PROJECT_DIR/.env.monitoring"
-set +a
+echo "Generating .env.monitoring from Parameter Store..."
 
-envsubst \
+ALERT_EMAIL="$(aws ssm get-parameter \
+  --region il-central-1 \
+  --name "/task-manager/prod/monitoring/ALERT_EMAIL" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text)"
+
+ALERT_SMTP_PASSWORD="$(aws ssm get-parameter \
+  --region il-central-1 \
+  --name "/task-manager/prod/monitoring/ALERT_SMTP_PASSWORD" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text)"
+
+{
+  printf 'APP_PRIVATE_IP=%s\n' "$APP_PRIVATE_IP"
+  printf 'ALERT_EMAIL=%s\n' "$ALERT_EMAIL"
+  printf 'ALERT_SMTP_PASSWORD=%s\n' "$ALERT_SMTP_PASSWORD"
+} > "$TMP_DIR/.env.monitoring"
+
+install -o ubuntu -g ubuntu -m 0600 \
+  "$TMP_DIR/.env.monitoring" \
+  "$PROJECT_DIR/.env.monitoring"
+
+export ALERT_EMAIL
+export ALERT_SMTP_PASSWORD
+
+envsubst '${ALERT_EMAIL} ${ALERT_SMTP_PASSWORD}' \
   < "$PROJECT_DIR/monitoring/alertmanager/alertmanager.template.yml" \
   > "$TMP_DIR/alertmanager.yml"
+
+unset ALERT_EMAIL ALERT_SMTP_PASSWORD
 
 # Validate the generated Alertmanager configuration before installing it.
 docker run --rm \
