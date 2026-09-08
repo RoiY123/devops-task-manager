@@ -133,19 +133,14 @@ jobs:
 
       - name: Resolve deployment values
         run: |
-          APP_INSTANCE_ID=$(aws ec2 describe-instances \
+          APP_INSTANCE_VALUES=$(aws ec2 describe-instances \
             --filters \
               "Name=tag:Name,Values=task-manager-prod-api" \
               "Name=instance-state-name,Values=running" \
-            --query "Reservations[0].Instances[0].InstanceId" \
+            --query "Reservations[0].Instances[0].[InstanceId,PrivateIpAddress]" \
             --output text)
 
-          APP_PRIVATE_IP=$(aws ec2 describe-instances \
-            --filters \
-              "Name=tag:Name,Values=task-manager-prod-api" \
-              "Name=instance-state-name,Values=running" \
-            --query "Reservations[0].Instances[0].PrivateIpAddress" \
-            --output text)
+          read -r APP_INSTANCE_ID APP_PRIVATE_IP <<< "$APP_INSTANCE_VALUES"
 
           MONITORING_INSTANCE_ID=$(aws ec2 describe-instances \
             --filters \
