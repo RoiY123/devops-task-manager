@@ -180,4 +180,13 @@ IMAGE_TAG="$IMAGE_TAG" docker compose \
   nginx \
   node-exporter
 
+# Remove Docker images that are no longer referenced by any container.
+echo "Docker disk usage before image cleanup:"
+docker system df
+
+docker image prune -af
+
+echo "Docker disk usage after image cleanup:"
+docker system df
+
 echo "Application deployment completed successfully."
