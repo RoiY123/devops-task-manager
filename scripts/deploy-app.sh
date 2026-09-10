@@ -37,15 +37,15 @@ chmod 0755 \
   "$PROJECT_DIR/scripts"
 
 # Download tracked production files from the exact Git commit being deployed.
-curl -fSL \
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/compose.prod.yml" \
   -o "$TMP_DIR/compose.prod.yml"
 
-curl -fSL \
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/docker/nginx/default.conf" \
   -o "$TMP_DIR/default.conf"
 
-curl -fSL \
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/scripts/renew-certificates.sh" \
   -o "$TMP_DIR/renew-certificates.sh"
 
@@ -132,11 +132,15 @@ IMAGE_TAG="$IMAGE_TAG" docker compose \
   pull api
 
 # Apply database migrations using the exact application image being deployed.
+echo "Running database migrations..."
+
 IMAGE_TAG="$IMAGE_TAG" docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
   run --rm api \
   alembic upgrade head
+
+echo "Database migrations completed successfully."
 
 IMAGE_TAG="$IMAGE_TAG" docker compose \
   --env-file .env.prod \

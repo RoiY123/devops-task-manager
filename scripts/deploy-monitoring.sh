@@ -36,35 +36,35 @@ install -d -o ubuntu -g ubuntu -m 0755 \
   "$PROJECT_DIR/monitoring/alertmanager"
 
 # Download tracked monitoring files from the exact Git commit.
-curl -fSL \
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/compose.monitoring.prod.yml" \
   -o "$TMP_DIR/compose.monitoring.prod.yml"
 
-curl -fSL \
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/monitoring/prometheus/prometheus.prod.yml" \
   -o "$TMP_DIR/prometheus.prod.yml"
 
-curl -fSL \
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/monitoring/prometheus/alerts.yml" \
   -o "$TMP_DIR/alerts.yml"
 
-curl -fSL \
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/monitoring/grafana/provisioning/dashboards/dashboard.yml" \
   -o "$TMP_DIR/dashboard.yml"
 
-curl -fSL \
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/monitoring/grafana/provisioning/datasources/prometheus.yml" \
   -o "$TMP_DIR/grafana-prometheus.yml"
 
-curl -fSL \
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/monitoring/grafana/dashboards/task-manager-application-overview.json" \
   -o "$TMP_DIR/task-manager-application-overview.json"
 
-curl -fSL \
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/monitoring/grafana/dashboards/task-manager-host-overview.json" \
   -o "$TMP_DIR/task-manager-host-overview.json"
 
-curl -fSL \
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/monitoring/alertmanager/alertmanager.template.yml" \
   -o "$TMP_DIR/alertmanager.template.yml"
 
