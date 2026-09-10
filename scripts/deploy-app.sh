@@ -125,11 +125,18 @@ install -o ubuntu -g ubuntu -m 0755 \
 
 cd "$PROJECT_DIR"
 
-# Pull and reconcile the API first so Nginx can resolve the "api" upstream.
+# Pull the exact API image before running migrations and reconciling the service.
 IMAGE_TAG="$IMAGE_TAG" docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
   pull api
+
+# Apply database migrations using the exact application image being deployed.
+IMAGE_TAG="$IMAGE_TAG" docker compose \
+  --env-file .env.prod \
+  -f compose.prod.yml \
+  run --rm api \
+  alembic upgrade head
 
 IMAGE_TAG="$IMAGE_TAG" docker compose \
   --env-file .env.prod \
