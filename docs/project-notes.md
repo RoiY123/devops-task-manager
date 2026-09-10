@@ -78,12 +78,19 @@ Completed:
 - Prometheus alert rules
 - Alertmanager notification routing
 - Gmail firing and resolved alert notifications
+- Automated Continuous Deployment with GitHub Actions
+- AWS authentication from GitHub Actions using OIDC
+- Remote deployments to EC2 using AWS Systems Manager
+- Immutable application deployments using Git commit SHA image tags
+- Production configuration and secrets loaded from AWS Systems Manager Parameter Store
+- Automated Alembic migrations during application deployment
+- Automated monitoring configuration deployment and readiness verification
 
 Current milestone:
-- Monitoring and observability completed
+- Continuous Deployment automation completed
 
 Next milestone:
-- Continuous Deployment automation
+- Project hardening and final polish
 
 ---
 
@@ -91,24 +98,37 @@ Next milestone:
 
 Current application:
 
-Developer Push
+```text
+Developer Push to main
         ↓
 GitHub Actions
         ↓
-Build, Test and Publish to GHCR
+      Test
         ↓
-EC2 Server
+Build and Publish Immutable Image to GHCR
+        ↓
+AWS OIDC Authentication
+        ↓
+AWS Systems Manager
+        ↓
+Application EC2
+        ↓
+Generate Production Configuration
+        ↓
+Run Alembic Migrations
         ↓
 Docker Compose
         ↓
 Nginx (HTTPS)
         ↓
-FastAPI
+     FastAPI
         ↓
 AWS RDS PostgreSQL
+```
 
 Local development:
 
+```text
   Docker Compose
         ↓
   FastAPI Container
@@ -120,32 +140,42 @@ Local development:
   PostgreSQL Container
         ↓
   Named Docker Volume
+```
 
 Infrastructure management:
 
+```text
   Terraform
       ↓
   Remote State (Amazon S3)
       ↓
   AWS Infrastructure:
-  * Existing Default VPC and Subnets (data sources)
-  * EC2 Security Groups
-  * EC2 Application and Monitoring Servers
-  * Elastic IP
-  * RDS Security Group
-  * RDS DB Subnet Group
-  * Amazon RDS PostgreSQL
+    ├─ Existing Default VPC and Subnets (data sources)
+    ├─ EC2 Security Groups
+    ├─ EC2 Application and Monitoring Servers
+    ├─ Elastic IP
+    ├─ RDS Security Group
+    ├─ RDS DB Subnet Group
+    └─ Amazon RDS PostgreSQL
+```
 
 Production monitoring:
 
+```text
+  GitHub Actions
+      ↓
+  AWS Systems Manager
+      ↓
   Monitoring EC2
+      ↓
+  Generate Runtime Configuration
       ↓
   Docker Compose
       ↓
   Prometheus:
-* FastAPI metrics on application EC2
-* Node Exporter metrics on application EC2
-* Prometheus self-monitoring
+    ├─ FastAPI metrics on application EC2
+    ├─ Node Exporter metrics on application EC2
+    └─ Prometheus self-monitoring
       ↓
   Grafana
       ↓
@@ -160,6 +190,7 @@ Production monitoring:
   Gmail Notifications
         ↓
   Firing and Resolved Alerts
+```
 
 ---
 
@@ -226,6 +257,7 @@ Accepted
 ### Authentication
 
 Decision:
+
 Use Argon2 (`pwdlib`) for password hashing and JWT access tokens for stateless authentication.
 Store only hashed passwords in the database and include only the authenticated user's ID (`sub`) in the JWT payload.
 
@@ -237,8 +269,12 @@ Accepted
 ### Configuration
 
 Decision:
+
 Store application configuration and secrets using environment variables.
-Commit environment-specific templates (`.env.example`, `.env.docker.example`, and `.env.prod.example`) while excluding real environment files from version control.
+
+Commit environment-specific templates (`.env.example`, `.env.docker.example`, `.env.prod.example`, and `.env.monitoring.example`) while excluding real environment files from version control.
+
+For production, store sensitive and runtime configuration in AWS Systems Manager Parameter Store and generate `.env.prod` and `.env.monitoring` automatically during deployment.
 
 Status:
 Accepted
@@ -248,11 +284,16 @@ Accepted
 ### Containerization
 
 Decision:
+
 Use Docker Compose to orchestrate the FastAPI application and PostgreSQL database.
+
 Persist database data using a named Docker volume, isolate services on a dedicated Docker network, and execute database migrations through Alembic inside Docker containers.
+
 Use Docker Compose for local development with bind mounts and automatic application reloads.
+
 Keep the Dockerfile production-oriented while allowing Compose to override runtime behavior for development.
-Use a separate `compose.prod.yml` configuration for production, with prebuilt GHCR images, internal-only application and database services, Nginx, and Certbot.
+
+Use a separate `compose.prod.yml` configuration for production, with prebuilt GHCR images, the FastAPI application, Nginx, Node Exporter, and Certbot, while using Amazon RDS for PostgreSQL.
 
 Status:
 Accepted
@@ -284,6 +325,26 @@ Accepted
 
 ---
 
+### Continuous Deployment
+
+Decision:
+
+Use GitHub Actions to deploy automatically after successful CI on the `main` branch.
+
+Authenticate GitHub Actions to AWS using OIDC instead of long-lived AWS credentials.
+Use AWS Systems Manager to run deployment commands on the application and monitoring EC2 instances without exposing deployment SSH credentials.
+
+Deploy immutable GHCR application images tagged with the Git commit SHA.
+Generate production runtime configuration from AWS Systems Manager Parameter Store during deployment.
+
+Run Alembic migrations using the exact application image being deployed before reconciling the API service.
+Deploy monitoring configuration automatically and verify Prometheus, Grafana, and Alertmanager readiness before considering the deployment successful.
+
+Status:
+Accepted
+
+---
+
 ### Production Deployment
 
 Decision:
@@ -302,8 +363,11 @@ Accepted
 Decision:
 
 Use Terraform to manage project-specific AWS infrastructure, including EC2, Elastic IPs, security groups, the RDS DB subnet group, and the production RDS PostgreSQL instance.
+
 Store the main Terraform state remotely in a private Amazon S3 bucket with versioning, encryption, public-access blocking, and state locking.
+
 Treat the AWS default VPC and default subnets as existing shared infrastructure and reference them using Terraform data sources rather than importing their lifecycle into the project's Terraform state.
+
 Adopt existing production resources incrementally using Terraform import and require a reviewed, non-destructive plan before applying infrastructure changes.
 
 Status:
@@ -316,25 +380,25 @@ Accepted
 Decision:
 
 Use Prometheus for application and infrastructure metrics, Grafana for visualization, Node Exporter for Linux host metrics, and Alertmanager for alert routing and notification delivery.
+
 Run Prometheus, Grafana, and Alertmanager on a dedicated monitoring EC2 instance so monitoring remains independent from the application host during application failures.
+
 Manage Grafana dashboards through version-controlled provisioning files rather than direct production UI changes.
+
 Use Prometheus alert rules for application availability, host monitoring availability, CPU, memory, and filesystem usage. Route firing and resolved notifications through Alertmanager using Gmail SMTP.
-Store real monitoring secrets only in the ignored `.env.monitoring` runtime file. Keep the Alertmanager configuration structure in a tracked template and generate the secret-bearing runtime configuration on the monitoring host.
+
+Store monitoring secrets in AWS Systems Manager Parameter Store and generate the ignored `.env.monitoring` runtime file during deployment. Keep the Alertmanager configuration structure in a tracked template and generate the secret-bearing runtime configuration on the monitoring host.
 
 Status:
 Accepted
 
 ## Next Session
 
-Begin the Continuous Deployment automation milestone.
+Begin project hardening and final polish.
 
 Topics:
 
-- GitHub Actions deployment workflow
-- AWS authentication from GitHub Actions using OIDC
-- IAM roles and least-privilege deployment permissions
-- AWS Systems Manager for remote deployment commands
-- Automated application deployment to EC2
-- Automated monitoring configuration deployment
-- Production configuration and secret handling during deployment
-- Deployment validation and failure handling
+- Review security and operational hardening
+- Review documentation and architecture consistency
+- Final project cleanup
+- Prepare the repository for portfolio presentation

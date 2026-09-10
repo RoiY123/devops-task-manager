@@ -2,61 +2,63 @@
 
 ## Database
 
-Production uses Amazon RDS for PostgreSQL instead of a PostgreSQL container on the EC2 instance.
+Production uses Amazon RDS for PostgreSQL.
 
-The RDS database is:
+The database is private inside the VPC and accepts PostgreSQL traffic only from the application EC2 security group.
 
-- Deployed privately inside the application VPC
-- Accessible on port `5432` only from the EC2 security group
-- Configured through `DATABASE_URL` in `.env.prod`
-- Initialized and upgraded using Alembic migrations
+Application connectivity is provided through `DATABASE_URL`, which is generated into `.env.prod` during deployment from AWS Systems Manager Parameter Store.
 
-The production database URL has the following structure:
-
-```text
-postgresql+psycopg://USERNAME:PASSWORD@RDS_ENDPOINT:5432/task_manager?sslmode=require
-```
-
-Run migrations from the production application image:
+Production migrations run automatically during deployment using the exact application image being deployed:
 
 ```bash
 docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
-  run --rm --no-deps api \
+  run --rm api \
   alembic upgrade head
 ```
 
+If a migration fails, the deployment stops before the new API container is reconciled.
+
 ## Application configuration
 
-Production application configuration is stored in `.env.prod` on the application EC2 instance.
+Production `.env.prod` is generated automatically on the application EC2 instance during deployment.
 
-Required values include the database connection, JWT settings, and:
+Configuration is loaded from AWS Systems Manager Parameter Store and includes:
 
 ```env
+DATABASE_URL=...
+JWT_SECRET_KEY=...
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
 ENABLE_DOCS=false
+IMAGE_TAG=sha-...
 ```
 
-The real .env.prod file must not be committed to Git.
+The real `.env.prod` file is runtime-only and must not be committed to Git.
 
-After changing application configuration, recreate the API service:
-
-```bash
-docker compose --env-file .env.prod -f compose.prod.yml up -d --no-deps api
-```
+Do not edit production configuration directly on EC2. Update the corresponding Parameter Store value and redeploy.
 
 ## Application deployment
 
-Production uses the prebuilt API image from GitHub Container Registry.
+Production deployments are automated through GitHub Actions.
 
-After a new image is published, update the application manually with:
+A push to `main` runs:
 
-```bash
-docker compose --env-file .env.prod -f compose.prod.yml pull api
-docker compose --env-file .env.prod -f compose.prod.yml up -d --no-deps api
-```
+GitHub Actions
+→ AWS authentication with OIDC
+→ dynamic EC2 discovery
+→ deployment through AWS Systems Manager
+→ production configuration generation
+→ application image pull
+→ Alembic migrations
+→ API reconciliation
+→ public health verification
+→ monitoring deployment
 
-Run Alembic migrations when the release includes database schema changes.
+The application is deployed from an immutable GHCR image tagged with the Git commit SHA.
+
+Old unused Docker images are pruned automatically after deployment to prevent disk accumulation.
 
 ## HTTPS
 
@@ -131,54 +133,39 @@ crontab -l
 
 ## Monitoring deployment
 
-Production monitoring runs separately from the application stack using: `compose.monitoring.prod.yml`
+Production monitoring runs on a dedicated EC2 instance using:
 
-The monitoring EC2 runtime directory is: `/home/ubuntu/task-manager-monitoring`
+`compose.monitoring.prod.yml`
 
-The monitoring environment file is: `.env.monitoring`
+Runtime directory:
 
-It contains runtime-only values and must not be committed to Git.
+`/home/ubuntu/task-manager-monitoring`
 
-Start or update the monitoring stack with:
+The deployment is automated through GitHub Actions and AWS Systems Manager.
 
-```bash
-docker compose --env-file .env.monitoring -f compose.monitoring.prod.yml up -d
-```
+`.env.monitoring` is generated automatically using:
 
-Verify the services with:
+- the application private IP discovered from AWS
+- `ALERT_EMAIL` from Parameter Store
+- `ALERT_SMTP_PASSWORD` from Parameter Store
 
-```bash
-docker compose --env-file .env.monitoring -f compose.monitoring.prod.yml ps
-```
+Prometheus, Grafana, and Alertmanager readiness are checked automatically before the monitoring deployment is considered successful.
 
 ### Alertmanager configuration
 
-The repository stores the Alertmanager configuration template: `monitoring/alertmanager/alertmanager.template.yml`
+The tracked template is:
 
-The monitoring EC2 uses the generated runtime file: `monitoring/alertmanager/alertmanager.yml`
+`monitoring/alertmanager/alertmanager.template.yml`
 
-The runtime file contains private SMTP values and must not be committed to Git.
+The generated runtime configuration is:
 
-The required private values are stored in .env.monitoring:
+`monitoring/alertmanager/alertmanager.yml`
 
-```env
-ALERT_EMAIL=...
-ALERT_SMTP_PASSWORD=...
-```
+The runtime file is generated automatically during deployment from Parameter Store values.
 
-Generate the runtime configuration after loading .env.monitoring into the shell:
+Because Alertmanager v0.33.1 runs as UID/GID `65534`, the generated configuration is installed with ownership `65534:65534` and mode `0600`.
 
-```bash
-envsubst '${ALERT_EMAIL} ${ALERT_SMTP_PASSWORD}' \
-  < monitoring/alertmanager/alertmanager.template.yml \
-  > monitoring/alertmanager/alertmanager.yml
-```
-
-Protect the generated file:
-
-```bash
-chmod 600 monitoring/alertmanager/alertmanager.yml
-```
+The generated file contains private SMTP values and must not be committed to Git.
 
 ## Monitoring access
 
@@ -202,19 +189,62 @@ ssh -i /path/to/key.pem -L 9093:localhost:9093 ubuntu@MONITORING_EC2_PUBLIC_IP
 
 Then open: `http://localhost:9093`
 
+## Manual recovery and troubleshooting
+
+Normal deployments should use GitHub Actions.
+
+For troubleshooting on the application EC2 instance:
+
+```bash
+cd /home/ubuntu/task-manager
+
+docker compose --env-file .env.prod -f compose.prod.yml ps
+docker compose --env-file .env.prod -f compose.prod.yml logs api
+```
+
+Run migrations manually if required:
+
+```bash
+IMAGE_TAG="$(grep '^IMAGE_TAG=' .env.prod | cut -d= -f2-)" docker compose \
+  --env-file .env.prod \
+  -f compose.prod.yml \
+  run --rm api \
+  alembic upgrade head
+```
+
+Reconcile the API manually if required:
+
+```bash
+IMAGE_TAG="$(grep '^IMAGE_TAG=' .env.prod | cut -d= -f2-)" docker compose \
+  --env-file .env.prod \
+  -f compose.prod.yml \
+  up -d api
+```
+
+For monitoring troubleshooting:
+
+```bash
+cd /home/ubuntu/task-manager-monitoring
+
+docker compose \
+  --env-file .env.monitoring \
+  -f compose.monitoring.prod.yml \
+  ps
+```
 
 ## Verification
 
-After deployment, verify:
+The deployment workflow automatically verifies:
 
-- https://roiy.dev/health
-- https://api.roiy.dev/health
+- `https://api.roiy.dev/health`
+- Prometheus readiness
+- Grafana health
+- Alertmanager readiness
 
-Both endpoints should return HTTP 200 over HTTPS.
+Manual verification can also include:
 
-Monitoring verification:
-
-- Prometheus targets for `fastapi`, `node-exporter`, and `prometheus` are `UP`
-- Grafana Application and Host Overview dashboards load successfully
-- Alertmanager is reachable through the SSH tunnel
-- Alert rules appear in Prometheus
+- application and host dashboards loading in Grafana
+- Prometheus targets reporting `UP`
+- Alert rules appearing in Prometheus
+- Alertmanager reachable through its SSH tunnel
+- `alembic current` matching `alembic heads`

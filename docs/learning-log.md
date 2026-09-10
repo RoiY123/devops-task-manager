@@ -1,6 +1,6 @@
 # Learning Log
 
-## Day 1
+## Milestone 1
 
 Learned:
 - Client/server architecture
@@ -13,9 +13,10 @@ Built:
 - GET /health endpoint
 
 Git:
+
 feat: initialize FastAPI application with health endpoint
 
-## Day 2
+## Milestone 2
 
 Learned:
 - Docker basics (containers vs images)
@@ -36,9 +37,10 @@ Built:
 - PostgreSQL health verification during application startup
 
 Git:
+
 feat: configure SQLAlchemy database connectivity
 
-## Day 3
+## Milestone 3
 
 Learned:
 - SQLAlchemy ORM models and object mapping
@@ -61,9 +63,10 @@ Built:
 - Removed the in-memory task storage completely
 
 Git:
+
 feat: persist tasks in PostgreSQL using SQLAlchemy ORM
 
-## Day 4
+## Milestone 4
 
 Learned:
 - Pydantic request vs response schemas
@@ -84,9 +87,10 @@ Built:
 - Duplicate email validation before user creation
 
 Git:
+
 feat: implement user registration with secure password hashing
 
-## Day 5
+## Milestone 5
 
 Learned:
 - JSON Web Token (JWT) authentication workflow
@@ -105,9 +109,10 @@ Built:
 - Login flow with password verification and JWT generation
 
 Git:
+
 feat: implement JWT login authentication
 
-## Day 6
+## Milestone 6
 
 Learned:
 - Implemented route protection using FastAPI dependencies and JWT authentication.
@@ -127,9 +132,10 @@ Built:
 - `.env.example` template for project setup.
 
 Git:
+
 feat: implement user authorization and task ownership
 
-## Day 7
+## Milestone 7
 
 Learned:
 - Docker Compose architecture and how multiple services are managed as a single application.
@@ -153,9 +159,10 @@ Built:
 - Improved local development experience without rebuilding the image after Python code changes.
 
 Git:
+
 feat: improve Docker development workflow
 
-## Day 8
+## Milestone 8
 
 Learned:
 - The difference between unit tests and integration tests.
@@ -176,9 +183,10 @@ Built:
 - Automated verification that users cannot view, modify, or delete resources owned by other users.
 
 Git:
+
 test: add integration test suite for authentication and task ownership
 
-## Day 9
+## Milestone 9
 
 Learned:
 - The purpose of Continuous Integration (CI) and how it differs from Continuous Deployment (CD).
@@ -199,9 +207,10 @@ Built:
 - Automated integration test execution on every push and pull request.
 
 Git:
+
 ci: add GitHub Actions test workflow
 
-## Day 10
+## Milestone 10
 
 Learned:
 - The difference between Continuous Integration (CI) and Continuous Deployment (CD).
@@ -221,9 +230,10 @@ Built:
 - Deployment documentation for reproducing the production environment.
 
 Git:
+
 feat: deploy application to AWS with HTTPS and automated certificate renewal
 
-## Day 11
+## Milestone 11
 
 Learned:
 - The difference between self-hosted PostgreSQL and a managed Amazon RDS database.
@@ -245,9 +255,10 @@ Built:
 - Verified registration, authentication, and task CRUD operations against RDS.
 
 Git:
+
 feat: migrate production database to Amazon RDS
 
-## Day 12
+## Milestone 12
 
 Learned:
 - Terraform fundamentals, including providers, resources, data sources, variables, state, and the plan/apply workflow.
@@ -271,10 +282,12 @@ Built:
 - Dependency references between EC2, security groups, RDS, subnet groups, and shared AWS networking.
 
 Git:
+
 feat: manage RDS database with Terraform
+
 refactor: reference existing AWS networking with data sources
 
-## Day 13
+## Milestone 13
 
 Learned:
 - Prometheus metric types and how application metrics are exposed through a `/metrics` endpoint.
@@ -308,4 +321,31 @@ Built:
 - Private SMTP configuration using `.env.monitoring` and a tracked Alertmanager configuration template.
 
 Git:
+
 feat: add production monitoring alerts
+
+## Milestone 14
+
+Learned:
+- How Continuous Deployment extends CI by automatically releasing validated changes to production.
+- How GitHub Actions can authenticate to AWS using OIDC without storing long-lived AWS access keys.
+- How AWS Systems Manager can execute deployment commands on EC2 instances without using SSH credentials in the CI/CD workflow.
+- Why immutable Docker image tags based on Git commit SHAs make deployments traceable and reproducible.
+- How production configuration and secrets can be loaded from AWS Systems Manager Parameter Store during deployment.
+- Why database migrations should run using the exact application image being deployed.
+- How deployment health checks and readiness checks help prevent incomplete releases from being treated as successful.
+- Why deployment scripts should fail fast when a critical step such as a migration or configuration validation fails.
+
+Built:
+- Automated production deployment from GitHub Actions after successful CI.
+- AWS OIDC authentication for the deployment workflow.
+- AWS Systems Manager based deployment to the application and monitoring EC2 instances.
+- Immutable GHCR deployments using Git commit SHA image tags.
+- Automated production environment generation from Parameter Store.
+- Automated Alembic migrations before application reconciliation.
+- Automated monitoring configuration deployment with readiness verification.
+- Deployment validation using public application health checks.
+- Automatic cleanup of unused Docker images on the application host.
+
+Git:
+cd: run database migrations during deployment
