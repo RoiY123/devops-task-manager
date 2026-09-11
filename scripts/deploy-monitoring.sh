@@ -57,6 +57,10 @@ curl -fsSL \
   -o "$TMP_DIR/grafana-prometheus.yml"
 
 curl -fsSL \
+  "$REPO_RAW_URL/$COMMIT_SHA/monitoring/grafana/provisioning/datasources/cloudwatch.yml" \
+  -o "$TMP_DIR/grafana-cloudwatch.yml"
+
+curl -fsSL \
   "$REPO_RAW_URL/$COMMIT_SHA/monitoring/grafana/dashboards/task-manager-application-overview.json" \
   -o "$TMP_DIR/task-manager-application-overview.json"
 
@@ -88,6 +92,10 @@ install -o ubuntu -g ubuntu -m 0644 \
 install -o ubuntu -g ubuntu -m 0644 \
   "$TMP_DIR/grafana-prometheus.yml" \
   "$PROJECT_DIR/monitoring/grafana/provisioning/datasources/prometheus.yml"
+
+install -o ubuntu -g ubuntu -m 0644 \
+  "$TMP_DIR/grafana-cloudwatch.yml" \
+  "$PROJECT_DIR/monitoring/grafana/provisioning/datasources/cloudwatch.yml"
 
 install -o ubuntu -g ubuntu -m 0644 \
   "$TMP_DIR/task-manager-application-overview.json" \
