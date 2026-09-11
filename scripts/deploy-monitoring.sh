@@ -117,10 +117,18 @@ ALERT_SMTP_PASSWORD="$(aws ssm get-parameter \
   --query "Parameter.Value" \
   --output text)"
 
+GRAFANA_ADMIN_PASSWORD="$(aws ssm get-parameter \
+  --region il-central-1 \
+  --name "/task-manager/prod/monitoring/GRAFANA_ADMIN_PASSWORD" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text)"
+
 {
   printf 'APP_PRIVATE_IP=%s\n' "$APP_PRIVATE_IP"
   printf 'ALERT_EMAIL=%s\n' "$ALERT_EMAIL"
   printf 'ALERT_SMTP_PASSWORD=%s\n' "$ALERT_SMTP_PASSWORD"
+  printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "$GRAFANA_ADMIN_PASSWORD"
 } > "$TMP_DIR/.env.monitoring"
 
 install -o ubuntu -g ubuntu -m 0600 \
@@ -134,7 +142,7 @@ envsubst '${ALERT_EMAIL} ${ALERT_SMTP_PASSWORD}' \
   < "$PROJECT_DIR/monitoring/alertmanager/alertmanager.template.yml" \
   > "$TMP_DIR/alertmanager.yml"
 
-unset ALERT_EMAIL ALERT_SMTP_PASSWORD
+unset ALERT_EMAIL ALERT_SMTP_PASSWORD GRAFANA_ADMIN_PASSWORD
 
 # Validate the generated Alertmanager configuration before installing it.
 docker run --rm \
