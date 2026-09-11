@@ -100,6 +100,33 @@ resource "aws_iam_role_policy_attachment" "monitoring_parameter_store" {
   policy_arn = aws_iam_policy.monitoring_parameter_store.arn
 }
 
+data "aws_iam_policy_document" "monitoring_cloudwatch" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "cloudwatch:GetMetricData",
+      "cloudwatch:GetMetricStatistics",
+      "cloudwatch:ListMetrics",
+      "ec2:DescribeRegions",
+      "rds:DescribeDBInstances",
+      "rds:ListTagsForResource"
+    ]
+
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "monitoring_cloudwatch" {
+  name   = "task-manager-monitoring-cloudwatch"
+  policy = data.aws_iam_policy_document.monitoring_cloudwatch.json
+}
+
+resource "aws_iam_role_policy_attachment" "monitoring_cloudwatch" {
+  role       = aws_iam_role.monitoring_ssm.name
+  policy_arn = aws_iam_policy.monitoring_cloudwatch.arn
+}
+
 resource "aws_iam_instance_profile" "monitoring" {
   name = "task-manager-monitoring-instance-profile"
 
