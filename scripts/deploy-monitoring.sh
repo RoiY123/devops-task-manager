@@ -3,7 +3,6 @@
 set -Eeuo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-/home/ubuntu/task-manager-monitoring}"
-REPO_RAW_URL="${REPO_RAW_URL:-https://raw.githubusercontent.com/RoiY123/devops-task-manager}"
 
 if [[ -z "${COMMIT_SHA:-}" ]]; then
   echo "ERROR: COMMIT_SHA is not set."
@@ -20,94 +19,70 @@ export APP_PRIVATE_IP
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+STAGING_DIR="$TMP_DIR/repo"
+
 echo "Deploying monitoring configuration from commit: $COMMIT_SHA"
 echo "Using app private IP: $APP_PRIVATE_IP"
 
-# Ensure the expected runtime directory structure exists.
+# Fetch only the runtime paths needed by the monitoring server.
+git clone \
+  --no-checkout \
+  --filter=blob:none \
+  https://github.com/RoiY123/devops-task-manager.git \
+  "$STAGING_DIR"
+
+cd "$STAGING_DIR"
+
+git sparse-checkout init --no-cone
+
+git sparse-checkout set \
+  --no-cone \
+  '/compose.monitoring.prod.yml' \
+  '/monitoring/prod/'
+
+# Check out the exact commit that triggered the deployment.
+git checkout "$COMMIT_SHA"
+
+# Ensure the top-level runtime directories exist.
 install -d -o ubuntu -g ubuntu -m 0755 \
   "$PROJECT_DIR" \
-  "$PROJECT_DIR/monitoring" \
-  "$PROJECT_DIR/monitoring/prometheus" \
-  "$PROJECT_DIR/monitoring/grafana" \
-  "$PROJECT_DIR/monitoring/grafana/provisioning" \
-  "$PROJECT_DIR/monitoring/grafana/provisioning/dashboards" \
-  "$PROJECT_DIR/monitoring/grafana/provisioning/datasources" \
-  "$PROJECT_DIR/monitoring/grafana/dashboards" \
-  "$PROJECT_DIR/monitoring/alertmanager"
+  "$PROJECT_DIR/monitoring/prod" \
+  "$PROJECT_DIR/runtime/alertmanager"
 
-# Download tracked monitoring files from the exact Git commit.
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/compose.monitoring.prod.yml" \
-  -o "$TMP_DIR/compose.monitoring.prod.yml"
-
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/monitoring/prometheus/prometheus.prod.yml" \
-  -o "$TMP_DIR/prometheus.prod.yml"
-
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/monitoring/prometheus/alerts.yml" \
-  -o "$TMP_DIR/alerts.yml"
-
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/monitoring/grafana/provisioning/dashboards/dashboard.yml" \
-  -o "$TMP_DIR/dashboard.yml"
-
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/monitoring/grafana/provisioning/datasources/prometheus.yml" \
-  -o "$TMP_DIR/grafana-prometheus.yml"
-
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/monitoring/grafana/provisioning/datasources/cloudwatch.yml" \
-  -o "$TMP_DIR/grafana-cloudwatch.yml"
-
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/monitoring/grafana/dashboards/task-manager-application-overview.json" \
-  -o "$TMP_DIR/task-manager-application-overview.json"
-
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/monitoring/grafana/dashboards/task-manager-host-overview.json" \
-  -o "$TMP_DIR/task-manager-host-overview.json"
-
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/monitoring/alertmanager/alertmanager.template.yml" \
-  -o "$TMP_DIR/alertmanager.template.yml"
-
-# Install tracked monitoring files with explicit ownership and permissions.
 install -o ubuntu -g ubuntu -m 0644 \
-  "$TMP_DIR/compose.monitoring.prod.yml" \
+  "$STAGING_DIR/compose.monitoring.prod.yml" \
   "$PROJECT_DIR/compose.monitoring.prod.yml"
 
-install -o ubuntu -g ubuntu -m 0644 \
-  "$TMP_DIR/prometheus.prod.yml" \
-  "$PROJECT_DIR/monitoring/prometheus/prometheus.prod.yml"
+GRAFANA_RESTART_NEEDED=false
+PROMETHEUS_RELOAD_NEEDED=false
+ALERTMANAGER_RELOAD_NEEDED=false
 
-install -o ubuntu -g ubuntu -m 0644 \
-  "$TMP_DIR/alerts.yml" \
-  "$PROJECT_DIR/monitoring/prometheus/alerts.yml"
+# Detect Grafana provisioning changes before synchronizing files.
+if [[ -n "$(rsync -acn \
+  --no-times \
+  --delete \
+  "$STAGING_DIR/monitoring/prod/grafana/provisioning/" \
+  "$PROJECT_DIR/monitoring/prod/grafana/provisioning/")" ]]; then
+  GRAFANA_RESTART_NEEDED=true
+fi
 
-install -o ubuntu -g ubuntu -m 0644 \
-  "$TMP_DIR/dashboard.yml" \
-  "$PROJECT_DIR/monitoring/grafana/provisioning/dashboards/dashboard.yml"
+# Detect Prometheus configuration changes before synchronizing files.
+if [[ -n "$(rsync -acn \
+  --no-times \
+  --delete \
+  "$STAGING_DIR/monitoring/prod/prometheus/" \
+  "$PROJECT_DIR/monitoring/prod/prometheus/")" ]]; then
+  PROMETHEUS_RELOAD_NEEDED=true
+fi
 
-install -o ubuntu -g ubuntu -m 0644 \
-  "$TMP_DIR/grafana-prometheus.yml" \
-  "$PROJECT_DIR/monitoring/grafana/provisioning/datasources/prometheus.yml"
-
-install -o ubuntu -g ubuntu -m 0644 \
-  "$TMP_DIR/grafana-cloudwatch.yml" \
-  "$PROJECT_DIR/monitoring/grafana/provisioning/datasources/cloudwatch.yml"
-
-install -o ubuntu -g ubuntu -m 0644 \
-  "$TMP_DIR/task-manager-application-overview.json" \
-  "$PROJECT_DIR/monitoring/grafana/dashboards/task-manager-application-overview.json"
-
-install -o ubuntu -g ubuntu -m 0644 \
-  "$TMP_DIR/task-manager-host-overview.json" \
-  "$PROJECT_DIR/monitoring/grafana/dashboards/task-manager-host-overview.json"
-
-install -o ubuntu -g ubuntu -m 0644 \
-  "$TMP_DIR/alertmanager.template.yml" \
-  "$PROJECT_DIR/monitoring/alertmanager/alertmanager.template.yml"
+# Sync tracked monitoring configuration from the exact Git commit.
+rsync -a \
+  --checksum \
+  --no-times \
+  --delete \
+  --chown=ubuntu:ubuntu \
+  "$STAGING_DIR/monitoring/prod/" \
+  "$PROJECT_DIR/monitoring/prod/"
 
 echo "Generating .env.monitoring from Parameter Store..."
 
@@ -147,10 +122,18 @@ export ALERT_EMAIL
 export ALERT_SMTP_PASSWORD
 
 envsubst '${ALERT_EMAIL} ${ALERT_SMTP_PASSWORD}' \
-  < "$PROJECT_DIR/monitoring/alertmanager/alertmanager.template.yml" \
+  < "$PROJECT_DIR/monitoring/prod/alertmanager/alertmanager.template.yml" \
   > "$TMP_DIR/alertmanager.yml"
 
 unset ALERT_EMAIL ALERT_SMTP_PASSWORD GRAFANA_ADMIN_PASSWORD
+
+# Detect changes in the fully rendered Alertmanager configuration.
+if [[ ! -f "$PROJECT_DIR/runtime/alertmanager/alertmanager.yml" ]] \
+  || ! cmp -s \
+    "$TMP_DIR/alertmanager.yml" \
+    "$PROJECT_DIR/runtime/alertmanager/alertmanager.yml"; then
+  ALERTMANAGER_RELOAD_NEEDED=true
+fi
 
 # Validate the generated Alertmanager configuration before installing it.
 docker run --rm \
@@ -162,7 +145,7 @@ docker run --rm \
 # Alertmanager v0.33.1 runs as UID/GID 65534 (nobody).
 install -o 65534 -g 65534 -m 0600 \
   "$TMP_DIR/alertmanager.yml" \
-  "$PROJECT_DIR/monitoring/alertmanager/alertmanager.yml"
+  "$PROJECT_DIR/runtime/alertmanager/alertmanager.yml"
 
 cd "$PROJECT_DIR"
 
@@ -175,6 +158,36 @@ docker compose \
   --env-file .env.monitoring \
   -f compose.monitoring.prod.yml \
   up -d
+
+# Grafana reads provisioning configuration at startup.
+if [[ "$GRAFANA_RESTART_NEEDED" == "true" ]]; then
+  echo "Grafana provisioning changed. Restarting Grafana..."
+
+  docker compose \
+    --env-file .env.monitoring \
+    -f compose.monitoring.prod.yml \
+    restart grafana
+fi
+
+# Reload Prometheus when its configuration or alert rules changed.
+if [[ "$PROMETHEUS_RELOAD_NEEDED" == "true" ]]; then
+  echo "Prometheus configuration changed. Reloading Prometheus..."
+
+  docker compose \
+    --env-file .env.monitoring \
+    -f compose.monitoring.prod.yml \
+    kill -s HUP prometheus
+fi
+
+# Reload Alertmanager when its rendered configuration changed.
+if [[ "$ALERTMANAGER_RELOAD_NEEDED" == "true" ]]; then
+  echo "Alertmanager configuration changed. Reloading Alertmanager..."
+
+  docker compose \
+    --env-file .env.monitoring \
+    -f compose.monitoring.prod.yml \
+    kill -s HUP alertmanager
+fi
 
 # Verify that all monitoring services become ready after deployment.
 for attempt in {1..12}; do

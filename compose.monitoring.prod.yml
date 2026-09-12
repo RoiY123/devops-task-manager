@@ -10,8 +10,8 @@ services:
       - "app-prod:${APP_PRIVATE_IP}"
 
     volumes:
-      - ./monitoring/prometheus/prometheus.prod.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./monitoring/prod/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prod/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus-data:/prometheus
 
   grafana:
@@ -27,8 +27,8 @@ services:
 
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./monitoring/prod/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/prod/grafana/dashboards:/var/lib/grafana/dashboards:ro
 
     depends_on:
       - prometheus
@@ -41,7 +41,7 @@ services:
       - "127.0.0.1:9093:9093"
 
     volumes:
-      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./runtime/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
 
     command:

@@ -148,6 +148,17 @@ The deployment is automated through GitHub Actions and AWS Systems Manager.
 - the application private IP discovered from AWS
 - `ALERT_EMAIL` from Parameter Store
 - `ALERT_SMTP_PASSWORD` from Parameter Store
+- `GRAFANA_ADMIN_PASSWORD` from Parameter Store
+
+Git-tracked production monitoring configuration is stored under:
+
+`monitoring/prod/`
+
+Local-only monitoring configuration is stored under:
+
+`monitoring/local/`
+
+During deployment, the production monitoring configuration is synchronized to the monitoring EC2 from the exact Git commit being deployed.
 
 Prometheus, Grafana, and Alertmanager readiness are checked automatically before the monitoring deployment is considered successful.
 
@@ -155,11 +166,11 @@ Prometheus, Grafana, and Alertmanager readiness are checked automatically before
 
 The tracked template is:
 
-`monitoring/alertmanager/alertmanager.template.yml`
+`monitoring/prod/alertmanager/alertmanager.template.yml`
 
 The generated runtime configuration is:
 
-`monitoring/alertmanager/alertmanager.yml`
+`/home/ubuntu/task-manager-monitoring/runtime/alertmanager/alertmanager.yml`
 
 The runtime file is generated automatically during deployment from Parameter Store values.
 

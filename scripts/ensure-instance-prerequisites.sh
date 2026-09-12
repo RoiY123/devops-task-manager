@@ -4,10 +4,17 @@ set -Eeuo pipefail
 
 echo "Checking instance prerequisites..."
 
-if ! command -v curl >/dev/null 2>&1; then
-  echo "curl is not installed. Installing..."
+MISSING_PACKAGES=()
+
+command -v curl >/dev/null 2>&1 || MISSING_PACKAGES+=(curl)
+command -v git >/dev/null 2>&1 || MISSING_PACKAGES+=(git)
+command -v rsync >/dev/null 2>&1 || MISSING_PACKAGES+=(rsync)
+command -v envsubst >/dev/null 2>&1 || MISSING_PACKAGES+=(gettext-base)
+
+if (( ${#MISSING_PACKAGES[@]} > 0 )); then
+  echo "Installing missing packages: ${MISSING_PACKAGES[*]}"
   apt-get update
-  apt-get install -y curl
+  apt-get install -y "${MISSING_PACKAGES[@]}"
 fi
 
 if command -v aws >/dev/null 2>&1; then

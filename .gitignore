@@ -30,6 +30,3 @@ crash.*.log
 *.tfplan
 
 !*.tfvars.example
-
-# Generated Alertmanager configuration
-monitoring/alertmanager/alertmanager.yml
