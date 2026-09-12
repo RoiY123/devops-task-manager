@@ -122,6 +122,11 @@ jobs:
       IMAGE_TAG: sha-${{ github.sha }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
@@ -174,14 +179,17 @@ jobs:
 
       - name: Deploy application with SSM
         run: |
+          PREREQUISITES_SCRIPT_B64="$(base64 -w 0 scripts/ensure-instance-prerequisites.sh)"
+          DEPLOY_APP_SCRIPT_B64="$(base64 -w 0 scripts/deploy-app.sh)"
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$APP_INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy task-manager API from GitHub Actions" \
             --parameters "commands=[
-              \"curl -fsSL https://raw.githubusercontent.com/RoiY123/devops-task-manager/${COMMIT_SHA}/scripts/ensure-instance-prerequisites.sh -o /tmp/ensure-instance-prerequisites.sh\",
+              \"echo ${PREREQUISITES_SCRIPT_B64} | base64 --decode > /tmp/ensure-instance-prerequisites.sh\",
               \"bash /tmp/ensure-instance-prerequisites.sh; STATUS=\$?; rm -f /tmp/ensure-instance-prerequisites.sh; if [ \$STATUS -ne 0 ]; then exit \$STATUS; fi\",
-              \"curl -fsSL https://raw.githubusercontent.com/RoiY123/devops-task-manager/${COMMIT_SHA}/scripts/deploy-app.sh -o /tmp/deploy-app.sh\",
+              \"echo ${DEPLOY_APP_SCRIPT_B64} | base64 --decode > /tmp/deploy-app.sh\",
               \"COMMIT_SHA=${COMMIT_SHA} IMAGE_TAG=${IMAGE_TAG} bash /tmp/deploy-app.sh; STATUS=\$?; rm -f /tmp/deploy-app.sh; exit \$STATUS\"
             ]" \
             --query "Command.CommandId" \
@@ -244,14 +252,17 @@ jobs:
 
       - name: Deploy monitoring with SSM
         run: |
+          PREREQUISITES_SCRIPT_B64="$(base64 -w 0 scripts/ensure-instance-prerequisites.sh)"
+          DEPLOY_MONITORING_SCRIPT_B64="$(base64 -w 0 scripts/deploy-monitoring.sh)"
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$MONITORING_INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy task-manager monitoring from GitHub Actions" \
             --parameters "commands=[
-              \"curl -fsSL https://raw.githubusercontent.com/RoiY123/devops-task-manager/${COMMIT_SHA}/scripts/ensure-instance-prerequisites.sh -o /tmp/ensure-instance-prerequisites.sh\",
+              \"echo ${PREREQUISITES_SCRIPT_B64} | base64 --decode > /tmp/ensure-instance-prerequisites.sh\",
               \"bash /tmp/ensure-instance-prerequisites.sh; STATUS=\$?; rm -f /tmp/ensure-instance-prerequisites.sh; if [ \$STATUS -ne 0 ]; then exit \$STATUS; fi\",
-              \"curl -fsSL https://raw.githubusercontent.com/RoiY123/devops-task-manager/${COMMIT_SHA}/scripts/deploy-monitoring.sh -o /tmp/deploy-monitoring.sh\",
+              \"echo ${DEPLOY_MONITORING_SCRIPT_B64} | base64 --decode > /tmp/deploy-monitoring.sh\",
               \"COMMIT_SHA=${COMMIT_SHA} APP_PRIVATE_IP=${APP_PRIVATE_IP} bash /tmp/deploy-monitoring.sh; STATUS=\$?; rm -f /tmp/deploy-monitoring.sh; exit \$STATUS\"
             ]" \
             --query "Command.CommandId" \
