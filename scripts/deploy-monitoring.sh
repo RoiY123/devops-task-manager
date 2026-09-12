@@ -58,8 +58,7 @@ PROMETHEUS_RELOAD_NEEDED=false
 ALERTMANAGER_RELOAD_NEEDED=false
 
 # Detect Grafana provisioning changes before synchronizing files.
-if [[ -n "$(rsync -acni \
-  --no-times \
+if [[ -n "$(rsync -rcni \
   --delete \
   "$STAGING_DIR/monitoring/prod/grafana/provisioning/" \
   "$PROJECT_DIR/monitoring/prod/grafana/provisioning/")" ]]; then
@@ -67,8 +66,7 @@ if [[ -n "$(rsync -acni \
 fi
 
 # Detect Prometheus configuration changes before synchronizing files.
-if [[ -n "$(rsync -acni \
-  --no-times \
+if [[ -n "$(rsync -rcni \
   --delete \
   "$STAGING_DIR/monitoring/prod/prometheus/" \
   "$PROJECT_DIR/monitoring/prod/prometheus/")" ]]; then
