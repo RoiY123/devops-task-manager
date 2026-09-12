@@ -3,7 +3,6 @@
 set -Eeuo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-/home/ubuntu/task-manager}"
-REPO_RAW_URL="${REPO_RAW_URL:-https://raw.githubusercontent.com/RoiY123/devops-task-manager}"
 
 if [[ -z "${COMMIT_SHA:-}" ]]; then
   echo "ERROR: COMMIT_SHA is not set."
@@ -18,37 +17,90 @@ fi
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
+STAGING_DIR="$TMP_DIR/repo"
+
 echo "Deploying commit: $COMMIT_SHA"
 echo "Deploying image tag: $IMAGE_TAG"
 
-# Ensure the expected runtime directory structure exists.
-mkdir -p \
-  "$PROJECT_DIR/docker/nginx" \
-  "$PROJECT_DIR/scripts"
+# Fetch only the runtime paths needed by the application server.
+git clone \
+  --no-checkout \
+  --filter=blob:none \
+  https://github.com/RoiY123/devops-task-manager.git \
+  "$STAGING_DIR"
 
-chown ubuntu:ubuntu \
+cd "$STAGING_DIR"
+
+git sparse-checkout init --no-cone
+
+git sparse-checkout set \
+  --no-cone \
+  '/compose.prod.yml' \
+  '/docker/nginx/' \
+  '/scripts/renew-certificates.sh'
+
+# Check out the exact commit that triggered the deployment.
+git checkout "$COMMIT_SHA"
+
+# Prepare runtime directories
+install -d -o ubuntu -g ubuntu -m 0755 \
+  "$PROJECT_DIR" \
   "$PROJECT_DIR/docker" \
-  "$PROJECT_DIR/docker/nginx" \
   "$PROJECT_DIR/scripts"
 
-chmod 0755 \
-  "$PROJECT_DIR/docker" \
-  "$PROJECT_DIR/docker/nginx" \
-  "$PROJECT_DIR/scripts"
+# Detect tracked configuration changes
+NGINX_RELOAD_NEEDED=false
+COMPOSE_CHANGED=false
 
-# Download tracked production files from the exact Git commit being deployed.
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/compose.prod.yml" \
-  -o "$TMP_DIR/compose.prod.yml"
+# Detect whether compose.prod.yml changed.
+if [[ ! -f "$PROJECT_DIR/compose.prod.yml" ]] \
+  || ! cmp -s \
+    "$STAGING_DIR/compose.prod.yml" \
+    "$PROJECT_DIR/compose.prod.yml"; then
+  COMPOSE_CHANGED=true
+fi
 
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/docker/nginx/default.conf" \
-  -o "$TMP_DIR/default.conf"
+# Detect actual Nginx file-content changes.
+if [[ -n "$(rsync -rcni \
+  --delete \
+  "$STAGING_DIR/docker/nginx/" \
+  "$PROJECT_DIR/docker/nginx/")" ]]; then
+  NGINX_RELOAD_NEEDED=true
+fi
 
-curl -fsSL \
-  "$REPO_RAW_URL/$COMMIT_SHA/scripts/renew-certificates.sh" \
-  -o "$TMP_DIR/renew-certificates.sh"
+# Preserve currently deployed configuration
+# Keep the existing Compose file in case Nginx validation fails.
+if [[ -f "$PROJECT_DIR/compose.prod.yml" ]]; then
+  cp -a \
+    "$PROJECT_DIR/compose.prod.yml" \
+    "$TMP_DIR/compose.prod.yml.previous"
+fi
 
+# Keep the existing Nginx configuration tree for rollback.
+if [[ -d "$PROJECT_DIR/docker/nginx" ]]; then
+  cp -a \
+    "$PROJECT_DIR/docker/nginx" \
+    "$TMP_DIR/nginx.previous"
+fi
+
+# Install tracked runtime files
+install -o ubuntu -g ubuntu -m 0644 \
+  "$STAGING_DIR/compose.prod.yml" \
+  "$PROJECT_DIR/compose.prod.yml"
+
+rsync -a \
+  --checksum \
+  --no-times \
+  --delete \
+  --chown=ubuntu:ubuntu \
+  "$STAGING_DIR/docker/nginx/" \
+  "$PROJECT_DIR/docker/nginx/"
+
+install -o ubuntu -g ubuntu -m 0755 \
+  "$STAGING_DIR/scripts/renew-certificates.sh" \
+  "$PROJECT_DIR/scripts/renew-certificates.sh"
+
+# Generate application environment
 echo "Generating .env.prod from Parameter Store..."
 
 DATABASE_URL="$(aws ssm get-parameter \
@@ -103,35 +155,56 @@ unset \
   ACCESS_TOKEN_EXPIRE_MINUTES \
   ENABLE_DOCS
 
-# Install tracked runtime files with explicit ownership and permissions.
-install -o ubuntu -g ubuntu -m 0644 \
-  "$TMP_DIR/compose.prod.yml" \
-  "$PROJECT_DIR/compose.prod.yml"
-
-# Preserve the currently working Nginx configuration before replacing it.
-if [[ -f "$PROJECT_DIR/docker/nginx/default.conf" ]]; then
-  cp \
-    "$PROJECT_DIR/docker/nginx/default.conf" \
-    "$TMP_DIR/default.conf.previous"
-fi
-
-install -o ubuntu -g ubuntu -m 0644 \
-  "$TMP_DIR/default.conf" \
-  "$PROJECT_DIR/docker/nginx/default.conf"
-
-install -o ubuntu -g ubuntu -m 0755 \
-  "$TMP_DIR/renew-certificates.sh" \
-  "$PROJECT_DIR/scripts/renew-certificates.sh"
-
 cd "$PROJECT_DIR"
 
-# Pull the exact API image before running migrations and reconciling the service.
+# Validate Nginx configuration
+# Validate when either the Nginx files or Compose definition changed.
+if [[ "$NGINX_RELOAD_NEEDED" == true ]] \
+  || [[ "$COMPOSE_CHANGED" == true ]]; then
+
+  echo "Validating Nginx configuration..."
+
+  if ! docker compose \
+    --env-file .env.prod \
+    -f compose.prod.yml \
+    run --rm --no-deps nginx nginx -t
+  then
+    echo "Nginx configuration validation failed. Restoring previous configuration..."
+
+    if [[ -d "$TMP_DIR/nginx.previous" ]]; then
+      rm -rf "$PROJECT_DIR/docker/nginx"
+
+      cp -a \
+        "$TMP_DIR/nginx.previous" \
+        "$PROJECT_DIR/docker/nginx"
+    else
+      rm -rf "$PROJECT_DIR/docker/nginx"
+
+      install -d -o ubuntu -g ubuntu -m 0755 \
+        "$PROJECT_DIR/docker/nginx"
+    fi
+
+    if [[ -f "$TMP_DIR/compose.prod.yml.previous" ]]; then
+      cp -a \
+        "$TMP_DIR/compose.prod.yml.previous" \
+        "$PROJECT_DIR/compose.prod.yml"
+    else
+      rm -f "$PROJECT_DIR/compose.prod.yml"
+    fi
+
+    echo "Previous production configuration restored."
+    echo "ERROR: Nginx configuration validation failed."
+    exit 1
+  fi
+fi
+
+# Pull application image
 IMAGE_TAG="$IMAGE_TAG" docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
   pull api
 
-# Apply database migrations using the exact application image being deployed.
+# Run database migrations
 echo "Running database migrations..."
 
 IMAGE_TAG="$IMAGE_TAG" docker compose \
@@ -142,40 +215,21 @@ IMAGE_TAG="$IMAGE_TAG" docker compose \
 
 echo "Database migrations completed successfully."
 
+# Reconcile API
 IMAGE_TAG="$IMAGE_TAG" docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
   up -d api
 
-# Validate the new Nginx configuration before loading it.
-if ! docker compose \
-  --env-file .env.prod \
-  -f compose.prod.yml \
-  exec -T nginx nginx -t
-then
-  if [[ -f "$TMP_DIR/default.conf.previous" ]]; then
-    install -o ubuntu -g ubuntu -m 0644 \
-      "$TMP_DIR/default.conf.previous" \
-      "$PROJECT_DIR/docker/nginx/default.conf"
+# Capture current Nginx container
+NGINX_CONTAINER_BEFORE="$(
+  docker compose \
+    --env-file .env.prod \
+    -f compose.prod.yml \
+    ps -q nginx
+)"
 
-    echo "Previous Nginx configuration restored."
-  else
-    rm -f "$PROJECT_DIR/docker/nginx/default.conf"
-
-    echo "Invalid Nginx configuration removed."
-  fi
-
-  echo "ERROR: Nginx configuration validation failed."
-  exit 1
-fi
-
-# Load the validated configuration without recreating the Nginx container.
-docker compose \
-  --env-file .env.prod \
-  -f compose.prod.yml \
-  exec -T nginx nginx -s reload
-
-# Pull the remaining long-running service images.
+# Pull remaining service images
 IMAGE_TAG="$IMAGE_TAG" docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
@@ -183,7 +237,7 @@ IMAGE_TAG="$IMAGE_TAG" docker compose \
   nginx \
   node-exporter
 
-# Reconcile the remaining long-running production services.
+# Reconcile remaining production services
 IMAGE_TAG="$IMAGE_TAG" docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
@@ -191,7 +245,28 @@ IMAGE_TAG="$IMAGE_TAG" docker compose \
   nginx \
   node-exporter
 
-# Remove Docker images that are no longer referenced by any container.
+# Determine whether Nginx was recreated
+NGINX_CONTAINER_AFTER="$(
+  docker compose \
+    --env-file .env.prod \
+    -f compose.prod.yml \
+    ps -q nginx
+)"
+
+# Reload Nginx only when required
+if [[ "$NGINX_RELOAD_NEEDED" == true ]] \
+  && [[ -n "$NGINX_CONTAINER_BEFORE" ]] \
+  && [[ "$NGINX_CONTAINER_BEFORE" == "$NGINX_CONTAINER_AFTER" ]]; then
+
+  echo "Nginx configuration changed. Reloading Nginx..."
+
+  docker compose \
+    --env-file .env.prod \
+    -f compose.prod.yml \
+    exec -T nginx nginx -s reload
+fi
+
+# Docker image cleanup
 echo "Docker disk usage before image cleanup:"
 docker system df
 

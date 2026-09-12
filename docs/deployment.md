@@ -45,18 +45,35 @@ Production deployments are automated through GitHub Actions.
 
 A push to `main` runs:
 
+```text
 GitHub Actions
 → AWS authentication with OIDC
 → dynamic EC2 discovery
 → deployment through AWS Systems Manager
+→ exact-commit application runtime configuration checkout
+→ production Nginx configuration synchronization and validation
 → production configuration generation
 → application image pull
 → Alembic migrations
-→ API reconciliation
+→ service reconciliation
+→ conditional Nginx reload when required
 → public health verification
 → monitoring deployment
+```
 
 The application is deployed from an immutable GHCR image tagged with the Git commit SHA.
+
+Git-tracked application runtime configuration is deployed from the exact Git commit being released.
+
+The application deployment checks out only the required runtime paths:
+
+- `compose.prod.yml`
+- `docker/nginx/`
+- `scripts/renew-certificates.sh`
+
+The tracked Nginx configuration tree is synchronized to the application EC2 instance. Nginx configuration is validated before production services are reconciled. If validation fails, the previous Compose and Nginx configuration is restored and the deployment fails.
+
+When Nginx configuration changes without requiring container recreation, the running Nginx process is reloaded automatically. If Docker Compose recreates the Nginx container, an additional reload is unnecessary because the new container loads the current configuration at startup.
 
 Old unused Docker images are pruned automatically after deployment to prevent disk accumulation.
 
