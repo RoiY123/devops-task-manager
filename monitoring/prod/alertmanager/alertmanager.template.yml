@@ -33,23 +33,46 @@ receivers:
           Subject: '[{{ .Status | toUpper }}:{{ len .Alerts }}] {{ .CommonLabels.alertname }}'
 
         html: |
-          <h2>{{ .CommonLabels.alertname }}</h2>
+          <div style="background-color:#f5f5f5; padding:24px 0; font-family:Arial, sans-serif;">
+            <div style="max-width:560px; margin:0 auto; background-color:#ffffff;">
 
-          {{ range .Alerts }}
-          <p>
-            <strong>Status:</strong> {{ .Status }}<br>
-            <strong>Severity:</strong> {{ .Labels.severity }}<br>
-            <strong>Environment:</strong> {{ .Labels.environment }}<br>
-            <strong>Service:</strong> {{ .Labels.service }}
-          </p>
+              <div style="
+                padding:18px 24px;
+                text-align:center;
+                color:#ffffff;
+                font-size:18px;
+                font-weight:bold;
+                background-color:{{ if eq .Status "firing" }}#f04e23{{ else }}#34a853{{ end }};
+              ">
+                {{ len .Alerts }} alert for alertname={{ .CommonLabels.alertname }}
+              </div>
 
-          <p>
-            <strong>Summary:</strong><br>
-            {{ .Annotations.summary }}
-          </p>
+              <div style="padding:24px 30px; color:#222222;">
 
-          <p>
-            <strong>Description:</strong><br>
-            {{ .Annotations.description }}
-          </p>
-          {{ end }}
+                {{ range .Alerts }}
+
+                <p style="font-size:16px; font-weight:bold; margin-top:0;">
+                  [{{ if eq .Status "firing" }}!{{ else }}✓{{ end }}] {{ .Status | toUpper }}
+                </p>
+
+                <p>
+                  <strong>Severity:</strong> {{ .Labels.severity }}<br>
+                  <strong>Environment:</strong> {{ .Labels.environment }}<br>
+                  <strong>Service:</strong> {{ .Labels.service }}
+                </p>
+
+                <p>
+                  <strong>Summary</strong><br>
+                  {{ .Annotations.summary }}
+                </p>
+
+                <p>
+                  <strong>Description</strong><br>
+                  {{ .Annotations.description }}
+                </p>
+
+                {{ end }}
+
+              </div>
+            </div>
+          </div>
