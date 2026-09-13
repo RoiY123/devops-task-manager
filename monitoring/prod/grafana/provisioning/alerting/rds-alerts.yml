@@ -1,0 +1,106 @@
+apiVersion: 1
+groups:
+    - orgId: 1
+      name: rds-alerts
+      folder: Task Manager Alerts
+      interval: 5m
+      rules:
+        - uid: rds-low-storage
+          title: RDS Low Free Storage Space
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: cloudwatch-rds
+              model:
+                datasource:
+                    type: cloudwatch
+                    uid: cloudwatch-rds
+                dimensions:
+                    DBInstanceIdentifier: task-manager-db
+                expression: ""
+                id: ""
+                instant: true
+                intervalMs: 1000
+                label: ""
+                logGroups: []
+                matchExact: false
+                maxDataPoints: 43200
+                metricEditorMode: 0
+                metricName: FreeStorageSpace
+                metricQueryType: 0
+                namespace: AWS/RDS
+                period: 5m
+                queryLanguage: CWLI
+                queryMode: Metrics
+                refId: A
+                region: default
+                sqlExpression: ""
+                statistic: Average
+            - refId: reducer
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0
+                            - 0
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params: []
+                      reducer:
+                        params: []
+                        type: avg
+                      type: query
+                datasource:
+                    name: Expression
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                reducer: last
+                refId: reducer
+                type: reduce
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 5.36870912e+09
+                        type: lt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: reducer
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 10m
+          annotations:
+            description: RDS task-manager-db has had less than 5 GiB of free storage space for more than 10 minutes.
+            summary: RDS free storage space is low
+          labels:
+            environment: production
+            service: rds
+            severity: warning
+          isPaused: false
