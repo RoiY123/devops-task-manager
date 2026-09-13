@@ -104,3 +104,503 @@ groups:
             service: rds
             severity: warning
           isPaused: false
+
+        - uid: rds-high-cpu
+          title: RDS High CPU Utilization
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: cloudwatch-rds
+              model:
+                datasource:
+                    type: cloudwatch
+                    uid: cloudwatch-rds
+                dimensions:
+                    DBInstanceIdentifier: task-manager-db
+                expression: ""
+                id: ""
+                instant: true
+                intervalMs: 1000
+                label: ""
+                logGroups: []
+                matchExact: false
+                maxDataPoints: 43200
+                metricEditorMode: 0
+                metricName: CPUUtilization
+                metricQueryType: 0
+                namespace: AWS/RDS
+                period: 5m
+                queryLanguage: CWLI
+                queryMode: Metrics
+                refId: A
+                region: default
+                sqlExpression: ""
+                statistic: Average
+            - refId: reducer
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0
+                            - 0
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params: []
+                      reducer:
+                        params: []
+                        type: avg
+                      type: query
+                datasource:
+                    name: Expression
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                reducer: last
+                refId: reducer
+                type: reduce
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 85
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: reducer
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 10m
+          annotations:
+            description: RDS task-manager-db CPU utilization has been above 85% for more than 10 minutes.
+            summary: RDS CPU utilization is high
+          labels:
+            environment: production
+            service: rds
+            severity: warning
+          isPaused: false
+
+        - uid: rds-low-memory
+          title: RDS Low Freeable Memory
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: cloudwatch-rds
+              model:
+                datasource:
+                    type: cloudwatch
+                    uid: cloudwatch-rds
+                dimensions:
+                    DBInstanceIdentifier: task-manager-db
+                expression: ""
+                id: ""
+                instant: true
+                intervalMs: 1000
+                label: ""
+                logGroups: []
+                matchExact: false
+                maxDataPoints: 43200
+                metricEditorMode: 0
+                metricName: FreeableMemory
+                metricQueryType: 0
+                namespace: AWS/RDS
+                period: 5m
+                queryLanguage: CWLI
+                queryMode: Metrics
+                refId: A
+                region: default
+                sqlExpression: ""
+                statistic: Average
+            - refId: reducer
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0
+                            - 0
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params: []
+                      reducer:
+                        params: []
+                        type: avg
+                      type: query
+                datasource:
+                    name: Expression
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                reducer: last
+                refId: reducer
+                type: reduce
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 104857600
+                        type: lt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: reducer
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 10m
+          annotations:
+            description: RDS task-manager-db freeable memory has been below 100 MiB for more than 10 minutes.
+            summary: RDS freeable memory is low
+          labels:
+            environment: production
+            service: rds
+            severity: warning
+          isPaused: false
+
+        - uid: rds-high-read-latency
+          title: RDS High Read Latency
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: cloudwatch-rds
+              model:
+                datasource:
+                    type: cloudwatch
+                    uid: cloudwatch-rds
+                dimensions:
+                    DBInstanceIdentifier: task-manager-db
+                expression: ""
+                id: ""
+                instant: true
+                intervalMs: 1000
+                label: ""
+                logGroups: []
+                matchExact: false
+                maxDataPoints: 43200
+                metricEditorMode: 0
+                metricName: ReadLatency
+                metricQueryType: 0
+                namespace: AWS/RDS
+                period: 5m
+                queryLanguage: CWLI
+                queryMode: Metrics
+                refId: A
+                region: default
+                sqlExpression: ""
+                statistic: Average
+            - refId: reducer
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0
+                            - 0
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params: []
+                      reducer:
+                        params: []
+                        type: avg
+                      type: query
+                datasource:
+                    name: Expression
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                reducer: last
+                refId: reducer
+                type: reduce
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0.02
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: reducer
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 10m
+          annotations:
+            description: RDS task-manager-db read latency has been above 20 ms for more than 10 minutes.
+            summary: RDS read latency is high
+          labels:
+            environment: production
+            service: rds
+            severity: warning
+          isPaused: false
+
+        - uid: rds-high-write-latency
+          title: RDS High Write Latency
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: cloudwatch-rds
+              model:
+                datasource:
+                    type: cloudwatch
+                    uid: cloudwatch-rds
+                dimensions:
+                    DBInstanceIdentifier: task-manager-db
+                expression: ""
+                id: ""
+                instant: true
+                intervalMs: 1000
+                label: ""
+                logGroups: []
+                matchExact: false
+                maxDataPoints: 43200
+                metricEditorMode: 0
+                metricName: WriteLatency
+                metricQueryType: 0
+                namespace: AWS/RDS
+                period: 5m
+                queryLanguage: CWLI
+                queryMode: Metrics
+                refId: A
+                region: default
+                sqlExpression: ""
+                statistic: Average
+            - refId: reducer
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0
+                            - 0
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params: []
+                      reducer:
+                        params: []
+                        type: avg
+                      type: query
+                datasource:
+                    name: Expression
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                reducer: last
+                refId: reducer
+                type: reduce
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0.02
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: reducer
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 10m
+          annotations:
+            description: RDS task-manager-db write latency has been above 20 ms for more than 10 minutes.
+            summary: RDS write latency is high
+          labels:
+            environment: production
+            service: rds
+            severity: warning
+          isPaused: false
+
+        - uid: rds-high-disk-queue
+          title: RDS High Disk Queue Depth
+          condition: C
+          data:
+            - refId: A
+              relativeTimeRange:
+                from: 600
+                to: 0
+              datasourceUid: cloudwatch-rds
+              model:
+                datasource:
+                    type: cloudwatch
+                    uid: cloudwatch-rds
+                dimensions:
+                    DBInstanceIdentifier: task-manager-db
+                expression: ""
+                id: ""
+                instant: true
+                intervalMs: 1000
+                label: ""
+                logGroups: []
+                matchExact: false
+                maxDataPoints: 43200
+                metricEditorMode: 0
+                metricName: DiskQueueDepth
+                metricQueryType: 0
+                namespace: AWS/RDS
+                period: 5m
+                queryLanguage: CWLI
+                queryMode: Metrics
+                refId: A
+                region: default
+                sqlExpression: ""
+                statistic: Average
+            - refId: reducer
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 0
+                            - 0
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params: []
+                      reducer:
+                        params: []
+                        type: avg
+                      type: query
+                datasource:
+                    name: Expression
+                    type: __expr__
+                    uid: __expr__
+                expression: A
+                intervalMs: 1000
+                maxDataPoints: 43200
+                reducer: last
+                refId: reducer
+                type: reduce
+            - refId: C
+              queryType: expression
+              datasourceUid: __expr__
+              model:
+                conditions:
+                    - evaluator:
+                        params:
+                            - 5
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params:
+                            - C
+                      reducer:
+                        params: []
+                        type: last
+                      type: query
+                datasource:
+                    type: __expr__
+                    uid: __expr__
+                expression: reducer
+                intervalMs: 1000
+                maxDataPoints: 43200
+                refId: C
+                type: threshold
+          noDataState: NoData
+          execErrState: Error
+          for: 10m
+          annotations:
+            description: RDS task-manager-db disk queue depth has been above 5 for more than 10 minutes.
+            summary: RDS disk queue depth is high
+          labels:
+            environment: production
+            service: rds
+            severity: warning
+          isPaused: false
