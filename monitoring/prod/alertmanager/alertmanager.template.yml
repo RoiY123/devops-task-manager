@@ -13,8 +13,43 @@ route:
   group_interval: 30s
   repeat_interval: 1h
 
+  routes:
+    - receiver: "grafana-email"
+      matchers:
+        - 'service="rds"'
+
 receivers:
   - name: "email"
     email_configs:
       - to: "${ALERT_EMAIL}"
         send_resolved: true
+
+  - name: "grafana-email"
+    email_configs:
+      - to: "${ALERT_EMAIL}"
+        send_resolved: true
+
+        headers:
+          Subject: '[{{ .Status | toUpper }}:{{ len .Alerts }}] {{ .CommonLabels.alertname }}'
+
+        html: |
+          <h2>{{ .CommonLabels.alertname }}</h2>
+
+          {{ range .Alerts }}
+          <p>
+            <strong>Status:</strong> {{ .Status }}<br>
+            <strong>Severity:</strong> {{ .Labels.severity }}<br>
+            <strong>Environment:</strong> {{ .Labels.environment }}<br>
+            <strong>Service:</strong> {{ .Labels.service }}
+          </p>
+
+          <p>
+            <strong>Summary:</strong><br>
+            {{ .Annotations.summary }}
+          </p>
+
+          <p>
+            <strong>Description:</strong><br>
+            {{ .Annotations.description }}
+          </p>
+          {{ end }}
