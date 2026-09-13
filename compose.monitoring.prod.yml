@@ -41,7 +41,7 @@ services:
       - "127.0.0.1:9093:9093"
 
     volumes:
-      - ./runtime/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./runtime/alertmanager:/etc/alertmanager:ro
       - alertmanager-data:/alertmanager
 
     command:
