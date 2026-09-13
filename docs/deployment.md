@@ -171,6 +171,15 @@ Git-tracked production monitoring configuration is stored under:
 
 `monitoring/prod/`
 
+Grafana provisioning includes:
+
+- Prometheus and CloudWatch data sources
+- the external Alertmanager data source
+- application, host, and RDS dashboards
+- Grafana-managed RDS alert rules
+
+The CloudWatch data source authenticates through the monitoring EC2 instance IAM role and does not require static AWS credentials.
+
 Local-only monitoring configuration is stored under:
 
 `monitoring/local/`
@@ -181,19 +190,26 @@ Prometheus, Grafana, and Alertmanager readiness are checked automatically before
 
 ### Alertmanager configuration
 
-The tracked template is:
+Tracked template:
 
 `monitoring/prod/alertmanager/alertmanager.template.yml`
 
-The generated runtime configuration is:
+Generated runtime configuration:
 
 `/home/ubuntu/task-manager-monitoring/runtime/alertmanager/alertmanager.yml`
 
-The runtime file is generated automatically during deployment from Parameter Store values.
+The runtime file is generated automatically during deployment from Parameter Store values and contains private SMTP credentials, so it must never be committed to Git.
 
-Because Alertmanager v0.33.1 runs as UID/GID `65534`, the generated configuration is installed with ownership `65534:65534` and mode `0600`.
+Alertmanager v0.33.1 runs as UID/GID `65534`, so the generated file is installed with ownership `65534:65534` and mode `0600`.
 
-The generated file contains private SMTP values and must not be committed to Git.
+Alertmanager receives alerts from two sources:
+
+- Prometheus alert rules
+- Grafana-managed RDS alert rules
+
+RDS alerts are matched using the `service="rds"` label and use dedicated email formatting. Prometheus alerts continue using the default Alertmanager email template.
+
+The runtime configuration directory is mounted into the Alertmanager container so regenerated configuration files can be reloaded safely.
 
 ## Monitoring access
 
@@ -271,8 +287,10 @@ The deployment workflow automatically verifies:
 
 Manual verification can also include:
 
-- application and host dashboards loading in Grafana
+- application, host, and RDS dashboards loading in Grafana
 - Prometheus targets reporting `UP`
-- Alert rules appearing in Prometheus
+- Prometheus alert rules appearing in Grafana
+- provisioned RDS alert rules appearing in Grafana and evaluating normally
+- CloudWatch RDS metrics returning data in Grafana
 - Alertmanager reachable through its SSH tunnel
 - `alembic current` matching `alembic heads`

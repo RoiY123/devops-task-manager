@@ -349,3 +349,24 @@ Built:
 
 Git:
 cd: run database migrations during deployment
+
+## Milestone 15
+
+Learned:
+- How Grafana can query Amazon RDS metrics from CloudWatch using the monitoring EC2 IAM role.
+- How Grafana-managed alerts can evaluate CloudWatch metrics and forward notifications to the existing Alertmanager.
+- How Grafana alert rules can be provisioned from version-controlled YAML.
+- Why mounting a configuration directory is safer than a single file when runtime config files are replaced and reloaded.
+
+Built:
+- Grafana CloudWatch datasource using IAM role-based authentication from the monitoring EC2 instance.
+- Provisioned RDS monitoring dashboard using CloudWatch metrics.
+- Provisioned RDS alert rules for storage, CPU, memory, latency, and disk queue depth.
+- Centralized RDS alert delivery through the existing Alertmanager.
+- Custom RDS alert email formatting.
+
+Git:
+
+feat: add RDS monitoring dashboard
+
+feat: add RDS monitoring alerts

@@ -85,6 +85,11 @@ Completed:
 - Production configuration and secrets loaded from AWS Systems Manager Parameter Store
 - Automated Alembic migrations during application deployment
 - Automated monitoring configuration deployment and readiness verification
+- Amazon RDS monitoring in Grafana using the CloudWatch datasource
+- Provisioned RDS monitoring dashboard with CPU, memory, storage, connections, I/O, queue depth, and latency metrics
+- Grafana-managed RDS alert rules provisioned from version-controlled YAML
+- RDS alerts for low storage, high CPU, low freeable memory, high read latency, high write latency, and high disk queue depth
+- Grafana-managed alerts forwarded to the existing Prometheus Alertmanager
 
 Current milestone:
 - Continuous Deployment automation completed
@@ -172,18 +177,32 @@ Production monitoring:
       ↓
   Docker Compose
       ↓
+Metrics and dashboards:
+
   Prometheus:
     ├─ FastAPI metrics on application EC2
     ├─ Node Exporter metrics on application EC2
     └─ Prometheus self-monitoring
       ↓
-  Grafana
+   Grafana
+    ├─ Provisioned Application dashboard
+    └─ Provisioned Host dashboard
+
+  Amazon CloudWatch:
+    └─ Amazon RDS metrics
       ↓
-  Provisioned Application and Host dashboards
+   Grafana
+    └─ Provisioned RDS dashboard
 
   Alerting:
 
   Prometheus Alert Rules
+        ↓
+  Alertmanager
+        ↓
+  Gmail Notifications
+
+  Grafana-managed RDS Alert Rules
         ↓
   Alertmanager
         ↓
@@ -388,6 +407,10 @@ Manage Grafana dashboards through version-controlled provisioning files rather t
 Use Prometheus alert rules for application availability, host monitoring availability, CPU, memory, and filesystem usage. Route firing and resolved notifications through Alertmanager using Gmail SMTP.
 
 Store monitoring secrets in AWS Systems Manager Parameter Store and generate the ignored `.env.monitoring` runtime file during deployment. Keep the Alertmanager configuration structure in a tracked template and generate the secret-bearing runtime configuration on the monitoring host.
+
+Use Amazon CloudWatch as the metrics source for Amazon RDS and configure Grafana's CloudWatch datasource to authenticate through the monitoring EC2 instance role.
+
+Use Grafana-managed alert rules for CloudWatch-backed RDS metrics, provision those rules from version-controlled YAML, and forward them to the existing external Prometheus Alertmanager. Keep Alertmanager as the central notification layer for both Prometheus and Grafana-managed alerts.
 
 Status:
 Accepted
