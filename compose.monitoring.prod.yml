@@ -10,8 +10,7 @@ services:
       - "app-prod:${APP_PRIVATE_IP}"
 
     volumes:
-      - ./monitoring/prod/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prod/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./monitoring/prod/prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
 
   grafana:
