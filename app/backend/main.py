@@ -10,6 +10,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from app.backend.database import check_database_connection
 from app.backend.routes import router
 from app.backend.monitoring import (
+    DATABASE_CONNECTION_UP,
     HTTP_REQUEST_DURATION_SECONDS,
     HTTP_REQUESTS_IN_PROGRESS,
     HTTP_REQUESTS_TOTAL,
@@ -84,6 +85,12 @@ async def collect_http_metrics(request: Request, call_next):
 
 @app.get("/metrics", include_in_schema=False)
 def metrics():
+    try:
+        check_database_connection()
+        DATABASE_CONNECTION_UP.set(1)
+    except Exception:
+        DATABASE_CONNECTION_UP.set(0)
+
     return Response(
         content=generate_latest(),
         media_type=CONTENT_TYPE_LATEST,

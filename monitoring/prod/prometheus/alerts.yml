@@ -3,25 +3,36 @@ groups:
     rules:
       - alert: FastAPITargetDown
         expr: up{job="fastapi"} == 0
-        for: 1m
+        for: 2m
 
         labels:
           severity: critical
 
         annotations:
           summary: "FastAPI target is down"
-          description: "Prometheus has been unable to scrape the FastAPI target for more than 1 minute."
+          description: "Prometheus has been unable to scrape the FastAPI target for more than 2 minute."
 
       - alert: NodeExporterTargetDown
         expr: up{job="node-exporter"} == 0
-        for: 1m
+        for: 2m
 
         labels:
           severity: critical
 
         annotations:
           summary: "Node Exporter target is down"
-          description: "Prometheus has been unable to scrape the Node Exporter target for more than 1 minute."
+          description: "Prometheus has been unable to scrape the Node Exporter target for more than 2 minute."
+
+      - alert: DatabaseConnectionDown
+        expr: database_connection_up == 0
+        for: 2m
+
+        labels:
+          severity: critical
+
+        annotations:
+          summary: "Database connection is down"
+          description: "FastAPI has been unable to connect to the production database for more than 2 minutes."
 
       - alert: HighCPUUsage
         expr: |

@@ -17,3 +17,8 @@ HTTP_REQUESTS_IN_PROGRESS = Gauge(
     "http_requests_in_progress",
     "Number of HTTP requests currently being processed",
 )
+
+DATABASE_CONNECTION_UP = Gauge(
+    "database_connection_up",
+    "Whether the application can connect to the database",
+)
