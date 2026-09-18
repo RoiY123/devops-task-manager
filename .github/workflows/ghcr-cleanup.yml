@@ -1,0 +1,29 @@
+name: GHCR Cleanup
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  PACKAGE_NAME: devops-task-manager
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: List GHCR package versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --paginate \
+            "/users/${{ github.repository_owner }}/packages/container/${PACKAGE_NAME}/versions?per_page=100" \
+            --jq '.[] | {
+              id: .id,
+              created_at: .created_at,
+              tags: .metadata.container.tags
+            }'
