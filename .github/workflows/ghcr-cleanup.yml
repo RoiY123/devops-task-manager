@@ -2,6 +2,12 @@ name: GHCR Cleanup
 
 on:
   workflow_dispatch:
+    inputs:
+      delete_versions:
+        description: "Delete versions marked for cleanup"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Evaluate GHCR package versions
+      - name: Evaluate and clean up GHCR package versions
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -84,5 +90,11 @@ jobs:
               "$ID" \
               "$TAGS" \
               "$REASON"
+
+            if [[ "$ACTION" == "DELETE" && "${{ inputs.delete_versions }}" == "true" ]]; then
+              gh api \
+                --method DELETE \
+                "/users/${{ github.repository_owner }}/packages/container/${PACKAGE_NAME}/versions/${ID}"
+            fi
 
           done < <(jq -c '.[]' /tmp/package-versions.json)
