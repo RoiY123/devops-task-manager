@@ -15,15 +15,74 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: List GHCR package versions
+      - name: Evaluate GHCR package versions
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          KEEP_SHA_COUNT=15
+
           gh api \
             --paginate \
+            --slurp \
             "/users/${{ github.repository_owner }}/packages/container/${PACKAGE_NAME}/versions?per_page=100" \
-            --jq '.[] | {
-              id: .id,
-              created_at: .created_at,
-              tags: .metadata.container.tags
-            }'
+            > /tmp/package-pages.json
+
+          jq 'add | sort_by(.created_at) | reverse' \
+            /tmp/package-pages.json \
+            > /tmp/package-versions.json
+
+          SHA_INDEX=0
+
+          while IFS= read -r version; do
+            ID=$(jq -r '.id' <<< "$version")
+            CREATED_AT=$(jq -r '.created_at' <<< "$version")
+            TAGS=$(jq -c '.metadata.container.tags' <<< "$version")
+
+            HAS_SHA=$(jq -r '
+              any(.metadata.container.tags[]?; startswith("sha-"))
+            ' <<< "$version")
+
+            HAS_LATEST=$(jq -r '
+              any(.metadata.container.tags[]?; . == "latest")
+            ' <<< "$version")
+
+            HAS_PROTECTED_TAG=$(jq -r '
+              any(
+                .metadata.container.tags[]?;
+                (. != "latest" and (startswith("sha-") | not))
+              )
+            ' <<< "$version")
+
+            if [[ "$HAS_SHA" == "true" ]]; then
+              SHA_INDEX=$((SHA_INDEX + 1))
+            fi
+
+            if [[ "$HAS_LATEST" == "true" ]]; then
+              ACTION="KEEP"
+              REASON="latest"
+
+            elif [[ "$HAS_PROTECTED_TAG" == "true" ]]; then
+              ACTION="KEEP"
+              REASON="release/non-SHA tag"
+
+            elif [[ "$HAS_SHA" == "true" && "$SHA_INDEX" -le "$KEEP_SHA_COUNT" ]]; then
+              ACTION="KEEP"
+              REASON="recent SHA image (${SHA_INDEX}/${KEEP_SHA_COUNT})"
+
+            elif [[ "$HAS_SHA" == "true" ]]; then
+              ACTION="DELETE"
+              REASON="old SHA image"
+
+            else
+              ACTION="DELETE"
+              REASON="untagged version"
+            fi
+
+            printf '%-6s | %-24s | %-12s | %s | %s\n' \
+              "$ACTION" \
+              "$CREATED_AT" \
+              "$ID" \
+              "$TAGS" \
+              "$REASON"
+
+          done < <(jq -c '.[]' /tmp/package-versions.json)
