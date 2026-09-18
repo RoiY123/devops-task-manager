@@ -9,6 +9,9 @@ on:
         type: boolean
         default: false
 
+  schedule:
+    - cron: "0 6 * * 0"
+
 permissions:
   contents: read
   packages: write
@@ -91,7 +94,9 @@ jobs:
               "$TAGS" \
               "$REASON"
 
-            if [[ "$ACTION" == "DELETE" && "${{ inputs.delete_versions }}" == "true" ]]; then
+            if [[ "$ACTION" == "DELETE" ]] && \
+              { [[ "${{ github.event_name }}" == "schedule" ]] || \
+                [[ "${{ inputs.delete_versions }}" == "true" ]]; }; then
               gh api \
                 --method DELETE \
                 "/users/${{ github.repository_owner }}/packages/container/${PACKAGE_NAME}/versions/${ID}"
