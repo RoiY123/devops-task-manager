@@ -21,7 +21,7 @@ env:
 
 jobs:
   inspect:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Evaluate and clean up GHCR package versions
