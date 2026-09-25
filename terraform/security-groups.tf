@@ -28,16 +28,6 @@ resource "aws_vpc_security_group_ingress_rule" "ec2_https" {
   cidr_ipv4   = "0.0.0.0/0"
 }
 
-resource "aws_vpc_security_group_ingress_rule" "ec2_ssh" {
-  security_group_id = aws_security_group.ec2.id
-
-  description = "Allow SSH from the administrator IP"
-  ip_protocol = "tcp"
-  from_port   = 22
-  to_port     = 22
-  cidr_ipv4   = var.admin_allowed_cidr
-}
-
 resource "aws_vpc_security_group_ingress_rule" "ec2_fastapi_from_monitoring" {
   security_group_id = aws_security_group.ec2.id
 
@@ -104,26 +94,6 @@ resource "aws_security_group" "monitoring" {
   tags = {
     Name = "task-manager-prod-monitoring-sg"
   }
-}
-
-resource "aws_vpc_security_group_ingress_rule" "monitoring_ssh" {
-  security_group_id = aws_security_group.monitoring.id
-
-  description = "Allow SSH from the administrator IP"
-  ip_protocol = "tcp"
-  from_port   = 22
-  to_port     = 22
-  cidr_ipv4   = var.admin_allowed_cidr
-}
-
-resource "aws_vpc_security_group_ingress_rule" "monitoring_grafana" {
-  security_group_id = aws_security_group.monitoring.id
-
-  description = "Allow Grafana access from the administrator IP"
-  ip_protocol = "tcp"
-  from_port   = 3000
-  to_port     = 3000
-  cidr_ipv4   = var.admin_allowed_cidr
 }
 
 resource "aws_vpc_security_group_egress_rule" "monitoring_all_outbound" {
