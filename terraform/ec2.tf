@@ -9,6 +9,12 @@ resource "aws_instance" "app" {
     aws_security_group.ec2.id
   ]
 
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
   monitoring                  = false
   source_dest_check           = true
   disable_api_termination     = false
@@ -60,6 +66,12 @@ resource "aws_instance" "monitoring" {
   vpc_security_group_ids = [
     aws_security_group.monitoring.id
   ]
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
 
   monitoring                  = false
   source_dest_check           = true
