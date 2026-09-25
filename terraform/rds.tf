@@ -44,16 +44,17 @@ resource "aws_db_instance" "production" {
 
   parameter_group_name = "default.postgres17"
 
-  backup_retention_period = 1
+  backup_retention_period = 7
   backup_window           = "05:50-06:20"
   maintenance_window      = "tue:06:51-tue:07:21"
 
   auto_minor_version_upgrade = true
   apply_immediately          = false
 
-  deletion_protection   = true
-  skip_final_snapshot   = true
-  copy_tags_to_snapshot = true
+  deletion_protection       = true
+  skip_final_snapshot       = false
+  final_snapshot_identifier = "task-manager-prod-db-final"
+  copy_tags_to_snapshot     = true
 
   performance_insights_enabled = true
   monitoring_interval          = 0
