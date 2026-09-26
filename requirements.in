@@ -1,0 +1,13 @@
+alembic==1.18.5
+argon2-cffi==25.1.0
+fastapi==0.139.2
+httpx2==2.9.1
+prometheus-client==0.26.0
+psycopg[binary]==3.3.4
+pwdlib==0.3.0
+pydantic==2.13.4
+PyJWT==2.13.0
+pytest==9.1.1
+python-dotenv==1.2.2
+SQLAlchemy==2.0.51
+uvicorn==0.51.0
