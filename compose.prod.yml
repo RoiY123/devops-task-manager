@@ -15,7 +15,7 @@ services:
       - "8000:8000"
 
   nginx:
-    image: nginx:1.28.3-alpine3.23
+    image: nginx:1.31.0-alpine3.23
     restart: unless-stopped
     depends_on:
       - api
