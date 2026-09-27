@@ -17,7 +17,7 @@ resource "aws_instance" "app" {
 
   monitoring                  = false
   source_dest_check           = true
-  disable_api_termination     = false
+  disable_api_termination     = true
   ebs_optimized               = true
   user_data_replace_on_change = false
 
