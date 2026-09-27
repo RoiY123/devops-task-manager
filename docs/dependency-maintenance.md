@@ -168,6 +168,27 @@ pip freeze > requirements.txt
 
 `pip freeze` records whatever happens to be installed in the current environment and does not preserve the direct-vs-transitive dependency model used by this project.
 
+### Python Tooling Note
+
+`pip` and `pip-tools` are development/build tooling rather than application dependencies.
+
+They are not maintained through `requirements.in` and do not have a routine upgrade schedule.
+
+The project uses the `pip` version provided by each Python environment unless there is a concrete reason to change it, such as a security issue, compatibility problem, or Python runtime upgrade.
+
+CI does not automatically upgrade `pip` on every run.
+
+`pip-tools` is used locally to generate and synchronize the dependency files:
+
+```bash
+python -m piptools compile requirements.in
+python -m piptools sync requirements.txt
+```
+
+pip-tools should be upgraded deliberately only when needed, rather than as part of normal application dependency maintenance.
+
+The Python runtime itself is more important for reproducibility. CI and the production Docker image therefore use the same pinned Python version: `Python 3.12.14`
+
 ---
 
 ## 5. Dependabot Pull Request Review Workflow
