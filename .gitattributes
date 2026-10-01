@@ -1,0 +1,5 @@
+# Shell scripts must use Unix line endings.
+*.sh text eol=lf
+
+# Cron schedules must use Unix line endings.
+/cron/* text eol=lf

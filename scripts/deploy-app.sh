@@ -36,8 +36,12 @@ git sparse-checkout init --no-cone
 git sparse-checkout set \
   --no-cone \
   '/compose.prod.yml' \
+  '/compose.bootstrap.yml' \
   '/docker/nginx/' \
-  '/scripts/renew-certificates.sh'
+  '/docker/nginx-bootstrap/' \
+  '/cron/task-manager-certificates' \
+  '/scripts/renew-certificates.sh' \
+  '/scripts/ensure-certificates.sh'
 
 # Check out the exact commit that triggered the deployment.
 git checkout "$COMMIT_SHA"
@@ -46,27 +50,8 @@ git checkout "$COMMIT_SHA"
 install -d -o ubuntu -g ubuntu -m 0755 \
   "$PROJECT_DIR" \
   "$PROJECT_DIR/docker" \
+  "$PROJECT_DIR/docker/nginx-bootstrap" \
   "$PROJECT_DIR/scripts"
-
-# Detect tracked configuration changes
-NGINX_RELOAD_NEEDED=false
-COMPOSE_CHANGED=false
-
-# Detect whether compose.prod.yml changed.
-if [[ ! -f "$PROJECT_DIR/compose.prod.yml" ]] \
-  || ! cmp -s \
-    "$STAGING_DIR/compose.prod.yml" \
-    "$PROJECT_DIR/compose.prod.yml"; then
-  COMPOSE_CHANGED=true
-fi
-
-# Detect actual Nginx file-content changes.
-if [[ -n "$(rsync -rcni \
-  --delete \
-  "$STAGING_DIR/docker/nginx/" \
-  "$PROJECT_DIR/docker/nginx/")" ]]; then
-  NGINX_RELOAD_NEEDED=true
-fi
 
 # Preserve currently deployed configuration
 # Keep the existing Compose file in case Nginx validation fails.
@@ -99,6 +84,19 @@ rsync -a \
 install -o ubuntu -g ubuntu -m 0755 \
   "$STAGING_DIR/scripts/renew-certificates.sh" \
   "$PROJECT_DIR/scripts/renew-certificates.sh"
+
+# Install certificate bootstrap files
+install -o ubuntu -g ubuntu -m 0644 \
+  "$STAGING_DIR/compose.bootstrap.yml" \
+  "$PROJECT_DIR/compose.bootstrap.yml"
+
+install -o ubuntu -g ubuntu -m 0644 \
+  "$STAGING_DIR/docker/nginx-bootstrap/default.conf" \
+  "$PROJECT_DIR/docker/nginx-bootstrap/default.conf"
+
+install -o ubuntu -g ubuntu -m 0755 \
+  "$STAGING_DIR/scripts/ensure-certificates.sh" \
+  "$PROJECT_DIR/scripts/ensure-certificates.sh"
 
 # Generate application environment
 echo "Generating .env.prod from Parameter Store..."
@@ -157,10 +155,31 @@ unset \
 
 cd "$PROJECT_DIR"
 
-# Validate Nginx configuration
-# Validate when either the Nginx files or Compose definition changed.
-if [[ "$NGINX_RELOAD_NEEDED" == true ]] \
-  || [[ "$COMPOSE_CHANGED" == true ]]; then
+# Retrieve certificate account configuration
+echo "Loading certificate account configuration..."
+
+CERTBOT_EMAIL="$(aws ssm get-parameter \
+  --region il-central-1 \
+  --name "/task-manager/prod/app/CERTBOT_EMAIL" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text)"
+
+# Pull infrastructure images before using them
+docker compose \
+  --env-file .env.prod \
+  -f compose.prod.yml \
+  pull nginx certbot node-exporter
+
+# Ensure certificate files exist
+CERTBOT_EMAIL="$CERTBOT_EMAIL" \
+PROJECT_DIR="$PROJECT_DIR" \
+bash "$PROJECT_DIR/scripts/ensure-certificates.sh"
+
+unset CERTBOT_EMAIL
+
+# Validate HTTPS configuration and restore previous config on failure
+validate_nginx_configuration() {
 
   echo "Validating Nginx configuration..."
 
@@ -172,16 +191,13 @@ if [[ "$NGINX_RELOAD_NEEDED" == true ]] \
     echo "Nginx configuration validation failed. Restoring previous configuration..."
 
     if [[ -d "$TMP_DIR/nginx.previous" ]]; then
-      rm -rf "$PROJECT_DIR/docker/nginx"
-
-      cp -a \
-        "$TMP_DIR/nginx.previous" \
-        "$PROJECT_DIR/docker/nginx"
+      rsync -a \
+        --checksum \
+        --delete \
+        "$TMP_DIR/nginx.previous/" \
+        "$PROJECT_DIR/docker/nginx/"
     else
-      rm -rf "$PROJECT_DIR/docker/nginx"
-
-      install -d -o ubuntu -g ubuntu -m 0755 \
-        "$PROJECT_DIR/docker/nginx"
+      echo "No previous Nginx configuration exists to restore."
     fi
 
     if [[ -f "$TMP_DIR/compose.prod.yml.previous" ]]; then
@@ -192,10 +208,24 @@ if [[ "$NGINX_RELOAD_NEEDED" == true ]] \
       rm -f "$PROJECT_DIR/compose.prod.yml"
     fi
 
-    echo "Previous production configuration restored."
-    echo "ERROR: Nginx configuration validation failed."
+    echo "Configuration restoration completed where previous copies were available."
+    echo "ERROR: Nginx configuration validation failed; deployment stopped."
     exit 1
   fi
+}
+
+# Preserve early validation on an existing application instance
+API_CONTAINER_BEFORE="$(
+  docker compose \
+    --env-file .env.prod \
+    -f compose.prod.yml \
+    ps --status running -q api
+)"
+
+if [[ -n "$API_CONTAINER_BEFORE" ]]; then
+  validate_nginx_configuration
+else
+  echo "No running API container; HTTPS validation will follow API startup."
 fi
 
 # Pull application image
@@ -221,6 +251,9 @@ IMAGE_TAG="$IMAGE_TAG" docker compose \
   -f compose.prod.yml \
   up -d api
 
+# Validate against the deployed API before activating HTTPS
+validate_nginx_configuration
+
 # Capture current Nginx container
 NGINX_CONTAINER_BEFORE="$(
   docker compose \
@@ -228,14 +261,6 @@ NGINX_CONTAINER_BEFORE="$(
     -f compose.prod.yml \
     ps -q nginx
 )"
-
-# Pull remaining service images
-IMAGE_TAG="$IMAGE_TAG" docker compose \
-  --env-file .env.prod \
-  -f compose.prod.yml \
-  pull \
-  nginx \
-  node-exporter
 
 # Reconcile remaining production services
 IMAGE_TAG="$IMAGE_TAG" docker compose \
@@ -253,18 +278,35 @@ NGINX_CONTAINER_AFTER="$(
     ps -q nginx
 )"
 
-# Reload Nginx only when required
-if [[ "$NGINX_RELOAD_NEEDED" == true ]] \
-  && [[ -n "$NGINX_CONTAINER_BEFORE" ]] \
+# Reload a retained Nginx container to refresh config and API resolution
+if [[ -n "$NGINX_CONTAINER_BEFORE" ]] \
   && [[ "$NGINX_CONTAINER_BEFORE" == "$NGINX_CONTAINER_AFTER" ]]; then
 
-  echo "Nginx configuration changed. Reloading Nginx..."
+  echo "Nginx container was retained. Reloading configuration and API resolution..."
 
   docker compose \
     --env-file .env.prod \
     -f compose.prod.yml \
     exec -T nginx nginx -s reload
 fi
+
+# Ensure the renewal scheduler is available
+if ! command -v crontab >/dev/null 2>&1; then
+  echo "Installing cron..."
+  apt-get update
+  apt-get install -y cron
+fi
+
+# Install the deployment-managed schedule
+install -d -o root -g root -m 0755 /etc/cron.d
+
+install -o root -g root -m 0644 \
+  "$STAGING_DIR/cron/task-manager-certificates" \
+  /etc/cron.d/task-manager-certificates
+
+systemctl enable --now cron
+
+echo "Deployment-managed certificate renewal schedule installed."
 
 # Docker image cleanup
 echo "Docker disk usage before image cleanup:"

@@ -1,0 +1,5 @@
+# Managed by deployment. Update the tracked file in Git.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+17 2,14 * * * ubuntu /home/ubuntu/task-manager/scripts/renew-certificates.sh >> /home/ubuntu/task-manager/certbot-renewal.log 2>&1

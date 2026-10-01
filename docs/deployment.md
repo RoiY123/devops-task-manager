@@ -43,110 +43,158 @@ Do not edit production configuration directly on EC2. Update the corresponding P
 
 Production deployments are automated through GitHub Actions.
 
-A push to `main` runs:
+A push to `main` runs CI, builds the application image, and deploys through AWS Systems Manager using OIDC authentication.
 
-```text
-GitHub Actions
-→ AWS authentication with OIDC
-→ dynamic EC2 discovery
-→ deployment through AWS Systems Manager
-→ exact-commit application runtime configuration checkout
-→ production Nginx configuration synchronization and validation
-→ production configuration generation
-→ application image pull
-→ Alembic migrations
-→ service reconciliation
-→ conditional Nginx reload when required
-→ public health verification
-→ monitoring deployment
-```
+The workflow supplies the exact Git commit SHA and its corresponding application image tag.
 
-The application is deployed from an immutable GHCR image tagged with the Git commit SHA.
+Deployment performs these steps:
 
-Git-tracked application runtime configuration is deployed from the exact Git commit being released.
+1. Ensure instance prerequisites, including Docker and Compose, are available.
+2. Check out runtime configuration from the exact deployment commit.
+3. Preserve the previous Compose and Nginx configuration.
+4. Install runtime files and generate `.env.prod` from Parameter Store.
+5. Retrieve the certificate account email and pull infrastructure images.
+6. Ensure certificate files exist, using HTTP bootstrap when necessary.
+7. Validate HTTPS configuration early if an API container is already running.
+8. Pull the application image, run Alembic migrations, and reconcile the API.
+9. Validate HTTPS configuration again before reconciling Nginx.
+10. Reconcile Nginx and Node Exporter.
+11. Reload Nginx if its existing container was retained.
+12. Install the managed certificate-renewal schedule and enable cron.
+13. Remove unused Docker images.
 
-The application deployment checks out only the required runtime paths:
+GitHub Actions then verifies public HTTPS health before deploying monitoring.
+
+The application deployment checks out these runtime paths:
 
 - `compose.prod.yml`
+- `compose.bootstrap.yml`
 - `docker/nginx/`
+- `docker/nginx-bootstrap/`
+- `cron/task-manager-certificates`
 - `scripts/renew-certificates.sh`
+- `scripts/ensure-certificates.sh`
 
-The tracked Nginx configuration tree is synchronized to the application EC2 instance. Nginx configuration is validated before production services are reconciled. If validation fails, the previous Compose and Nginx configuration is restored and the deployment fails.
+A retained Nginx container is reloaded to read current configuration and refresh API hostname resolution.<br>
+A recreated container loads these at startup.
 
-When Nginx configuration changes without requiring container recreation, the running Nginx process is reloaded automatically. If Docker Compose recreates the Nginx container, an additional reload is unnecessary because the new container loads the current configuration at startup.
+If HTTPS configuration validation fails, deployment attempts to restore the available previous Compose and Nginx configuration and stops.<br>
+Nginx directory contents are restored without replacing the mounted directory.
 
-Old unused Docker images are pruned automatically after deployment to prevent disk accumulation.
+This is limited configuration recovery, not a complete release rollback:<br>
+database migrations, the API image, and `.env.prod` are not rolled back.<br>
+Other deployment failures do not automatically invoke this restoration.
+
+The final public health check determines whether the application is reachable through HTTPS.<br>
+Container startup and `nginx -t` alone do not
+establish application health.
 
 ## HTTPS
 
-HTTPS is terminated by Nginx using certificates issued by Let's Encrypt.
+Nginx terminates HTTPS using a Let's Encrypt certificate covering `roiy.dev` and `api.roiy.dev`.
 
-Certificate files are stored in the Docker named volume:
+Certificate state is stored in the Compose named volume `certbot_certs`.<br>
+Certbot writes to this volume, and Nginx mounts it read-only.<br>
+The shared `certbot_webroot` volume holds HTTP validation files.
 
-`certbot_certs`
+Named volumes survive container recreation. They do not automatically survive replacement of the EC2 disk on which Docker stores them.
 
-Using a Docker volume ensures that certificates persist across container recreation and are shared between the Certbot and Nginx containers.
+Certificate private keys and account state must not be committed to Git.
 
-The certificates and private keys must not be committed to Git.
+## Certificate account configuration
 
-## Initial certificate issuance
+Create this Parameter Store parameter in `il-central-1` before deployment:
 
-This command is required only for the initial certificate issuance.
-Future renewals are handled automatically by Certbot.
-Run this after DNS points to the EC2 Elastic IP and Nginx is available over port 80:
+| Parameter | Type | Purpose |
+| --- | --- | --- |
+| `/task-manager/prod/app/CERTBOT_EMAIL` | `SecureString` | Let's Encrypt account contact email |
 
-```bash
-docker compose --env-file .env.prod -f compose.prod.yml run --rm certbot certonly \
-  --webroot \
-  --webroot-path=/var/www/certbot \
-  --email YOUR_EMAIL \
-  --agree-tos \
-  --no-eff-email \
-  -d roiy.dev \
-  -d api.roiy.dev
-```
+Use the default AWS-managed KMS key, `alias/aws/ssm`.
 
-## Test certificate renewal
+`deploy-app.sh` retrieves this parameter on every deployment and passes its value to `ensure-certificates.sh` through the `CERTBOT_EMAIL` environment variable.
 
-Verify that future renewals can succeed:
+The email is not written to `.env.prod` and does not belong in `.env.prod.example`. Do not commit its value or print it in deployment logs.
 
-```bash
-docker compose --env-file .env.prod -f compose.prod.yml run --rm certbot renew --dry-run
-```
+## Automatic certificate bootstrap
 
-A successful dry run confirms that the renewal process is correctly configured without modifying the production certificate.
+`deploy-app.sh` invokes `scripts/ensure-certificates.sh`.
+
+The helper checks the expected certificate and private-key files:
+
+- Both files are nonempty: reuse them without requesting a certificate.
+- No certificate state is found for `roiy.dev`: perform initial issuance.
+- Incomplete certificate state or an inspection error: stop deployment.
+
+File presence is not a certificate validity or expiration check.
+
+For initial issuance, the helper:
+
+1. Validates the temporary HTTP Nginx configuration.
+2. Starts Nginx using `compose.prod.yml` and `compose.bootstrap.yml`.
+3. Waits for the temporary HTTP server to respond.
+4. Runs Certbot webroot validation for both domain names.
+5. Confirms that the certificate files were created.
+
+The temporary configuration serves ACME challenge files and returns HTTP 503 for ordinary requests. It requires neither certificates nor a running API.
+
+After the helper succeeds, deployment starts the API, validates the production HTTPS configuration, and reconciles Nginx using only `compose.prod.yml`.<br>
+The changed configuration mount causes bootstrap
+Nginx to be replaced with the production configuration.
+
+Both domains must resolve to the intended server, and public port 80 must be reachable for HTTP validation.
+
+If issuance fails, deployment stops. The temporary HTTP server may remain running for diagnosis and retry.<br>
+Do not delete existing production certificate volumes to test bootstrap.
 
 ## Automatic certificate renewal
 
-Certificate renewal is performed by:
+Renewal is performed by `scripts/renew-certificates.sh`.<br>
+It runs `certbot renew --quiet` and reloads Nginx after a successful check.
 
-`scripts/renew-certificates.sh`
+The tracked schedule is:
 
-Test it manually:
+`cron/task-manager-certificates`
+
+Deployment installs it as:
+
+`/etc/cron.d/task-manager-certificates`
+
+The installed file is owned by root with mode `0644`.<br>
+Its job runs as `ubuntu` at 02:17 and 14:17 according to the server's cron timezone.
+
+Output is appended to:
+
+`/home/ubuntu/task-manager/certbot-renewal.log`
+
+A successful check does not necessarily mean a certificate was renewed. Certbot renews certificates when they are due.
+
+Update the schedule in Git. Direct edits to the managed file on EC2 are overwritten on the next deployment.<br>
+Other cron files and personal crontabs are not modified by deployment.
+
+## Verify certificate renewal
+
+On the application EC2, inspect the installed schedule and service:
 
 ```bash
-./scripts/renew-certificates.sh
+sudo cat /etc/cron.d/task-manager-certificates
+systemctl is-active cron
+systemctl is-enabled cron
 ```
 
-Install the scheduled job:
+Test ACME renewal using the staging service:
 
 ```bash
-crontab -e
+cd /home/ubuntu/task-manager
+
+docker compose \
+  --env-file .env.prod \
+  -f compose.prod.yml \
+  run --rm certbot renew --dry-run
 ```
 
-```cron
-17 2,14 * * * /home/ubuntu/task-manager/scripts/renew-certificates.sh >> /home/ubuntu/task-manager/certbot-renewal.log 2>&1
-```
+This tests renewal without replacing the production certificate. It does not test whether cron invokes the script on schedule.
 
-The job runs twice per day.
-
-Certbot renews certificates only when they are close to expiration, so running this job regularly does not request a new certificate every time.
-
-Verify the installed entry:
-
-```bash
-crontab -l
-```
+Inspect scheduled execution separately through certbot-renewal.log.
 
 ## Monitoring deployment
 
