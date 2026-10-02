@@ -37,7 +37,7 @@ git sparse-checkout init --no-cone
 
 git sparse-checkout set \
   --no-cone \
-  '/compose.monitoring.prod.yml' \
+  '/compose-monitoring.prod.yml' \
   '/monitoring/prod/'
 
 # Check out the exact commit that triggered the deployment.
@@ -50,8 +50,8 @@ install -d -o ubuntu -g ubuntu -m 0755 \
   "$PROJECT_DIR/runtime/alertmanager"
 
 install -o ubuntu -g ubuntu -m 0644 \
-  "$STAGING_DIR/compose.monitoring.prod.yml" \
-  "$PROJECT_DIR/compose.monitoring.prod.yml"
+  "$STAGING_DIR/compose-monitoring.prod.yml" \
+  "$PROJECT_DIR/compose-monitoring.prod.yml"
 
 GRAFANA_RESTART_NEEDED=false
 PROMETHEUS_RELOAD_NEEDED=false
@@ -149,12 +149,12 @@ cd "$PROJECT_DIR"
 
 docker compose \
   --env-file .env.monitoring \
-  -f compose.monitoring.prod.yml \
+  -f compose-monitoring.prod.yml \
   pull
 
 docker compose \
   --env-file .env.monitoring \
-  -f compose.monitoring.prod.yml \
+  -f compose-monitoring.prod.yml \
   up -d
 
 # Grafana reads provisioning configuration at startup.
@@ -163,7 +163,7 @@ if [[ "$GRAFANA_RESTART_NEEDED" == "true" ]]; then
 
   docker compose \
     --env-file .env.monitoring \
-    -f compose.monitoring.prod.yml \
+    -f compose-monitoring.prod.yml \
     restart grafana
 fi
 
@@ -173,7 +173,7 @@ if [[ "$PROMETHEUS_RELOAD_NEEDED" == "true" ]]; then
 
   docker compose \
     --env-file .env.monitoring \
-    -f compose.monitoring.prod.yml \
+    -f compose-monitoring.prod.yml \
     kill -s HUP prometheus
 fi
 
@@ -183,7 +183,7 @@ if [[ "$ALERTMANAGER_RELOAD_NEEDED" == "true" ]]; then
 
   docker compose \
     --env-file .env.monitoring \
-    -f compose.monitoring.prod.yml \
+    -f compose-monitoring.prod.yml \
     kill -s HUP alertmanager
 fi
 
@@ -208,7 +208,7 @@ done
 echo "ERROR: Monitoring services did not become ready."
 docker compose \
   --env-file .env.monitoring \
-  -f compose.monitoring.prod.yml \
+  -f compose-monitoring.prod.yml \
   ps
 
 exit 1

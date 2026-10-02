@@ -204,7 +204,7 @@ A successful dry run validates renewal against Let's Encrypt's staging service w
 
 Production monitoring runs on a dedicated EC2 instance using:
 
-`compose.monitoring.prod.yml`
+`compose-monitoring.prod.yml`
 
 Runtime directory:
 
@@ -324,7 +324,7 @@ cd /home/ubuntu/task-manager-monitoring
 
 docker compose \
   --env-file .env.monitoring \
-  -f compose.monitoring.prod.yml \
+  -f compose-monitoring.prod.yml \
   ps
 ```
 
