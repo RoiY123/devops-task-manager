@@ -189,12 +189,16 @@ cd /home/ubuntu/task-manager
 docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
-  run --rm certbot renew --dry-run
+  run --rm --no-deps certbot renew \
+  --dry-run \
+  --no-random-sleep-on-renew \
+  --verbose
 ```
 
-This tests renewal without replacing the production certificate. It does not test whether cron invokes the script on schedule.
+The manual test skips Certbot's randomized renewal delay and displays progress directly in the terminal.<br>
+The scheduled renewal script retains the normal delay and writes output to certbot-renewal.log.
 
-Inspect scheduled execution separately through certbot-renewal.log.
+A successful dry run validates renewal against Let's Encrypt's staging service without replacing production certificates. It does not verify the script's Nginx reload or prove that cron triggered the job.
 
 ## Monitoring deployment
 
