@@ -1,9 +1,9 @@
 resource "aws_instance" "app" {
-  ami                  = "ami-0d3dfbd3aedad5847"
-  instance_type        = "t3.micro"
-  key_name             = "task-manager-key"
-  subnet_id            = data.aws_subnet.default_1b.id
-  iam_instance_profile = aws_iam_instance_profile.app.name
+  ami                         = "ami-01e68948e457f16b3"
+  instance_type               = "t3.micro"
+  subnet_id                   = data.aws_subnet.default_1b.id
+  associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.app.name
 
   vpc_security_group_ids = [
     aws_security_group.ec2.id
@@ -15,16 +15,15 @@ resource "aws_instance" "app" {
     http_put_response_hop_limit = 2
   }
 
-  monitoring                  = false
-  source_dest_check           = true
-  disable_api_termination     = true
-  ebs_optimized               = true
-  user_data_replace_on_change = false
+  monitoring              = false
+  source_dest_check       = true
+  disable_api_termination = true
+  ebs_optimized           = true
 
   root_block_device {
     volume_size           = 10
     volume_type           = "gp3"
-    encrypted             = false
+    encrypted             = true
     delete_on_termination = true
   }
 
