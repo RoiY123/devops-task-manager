@@ -400,7 +400,7 @@ Built:
 - SSM-based administrative access and private access to monitoring services.
 - Restricted security-group rules and explicit IMDSv2 configuration.
 - A non-root application container.
-- RDS backup retention, deletion protection, and final-snapshot configuration.
+- Extended RDS backup retention to seven days, required a final snapshot for Terraform-managed deletion, and removed unrestricted RDS outbound access.
 - Automated installation of prerequisites on replacement instances.
 - Automatic initial TLS issuance using temporary HTTP-only Nginx configuration.
 - Deployment-managed certificate renewal scheduling and quieter renewal logs.
