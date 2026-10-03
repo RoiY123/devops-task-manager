@@ -370,3 +370,54 @@ Git:
 feat: add RDS monitoring dashboard
 
 feat: add RDS monitoring alerts
+
+## Milestone 16 — Production hardening and reproducibility
+
+Goal:
+
+Make production safer to operate, easier to maintain, and reproducible
+when the application EC2 instance needs replacing.
+
+Learned:
+
+- How SSM sessions and port forwarding provide administrative access
+  without opening inbound SSH or monitoring ports.
+- How network restrictions, IMDSv2, non-root containers, encrypted storage,
+  and deletion protections address different security and operational risks.
+- Why infrastructure defined in Terraform is only part of reproducibility:
+  a replacement also needs software prerequisites, runtime configuration,
+  certificates, scheduled jobs, and correct deployment targeting.
+- How to replace an application instance while retaining a temporary
+  recovery option, preserving the production Elastic IP, and updating
+  Terraform state without recreating the promoted instance.
+- How pinned dependencies, Dependabot, and a maintenance runbook support
+  controlled updates across development, CI, and production.
+- Why successful deployment, public health checks, and monitoring target
+  verification provide different evidence that a replacement works.
+
+Built:
+
+- SSM-based administrative access and private access to monitoring services.
+- Restricted security-group rules and explicit IMDSv2 configuration.
+- A non-root application container.
+- RDS backup retention, deletion protection, and final-snapshot configuration.
+- Automated installation of prerequisites on replacement instances.
+- Automatic initial TLS issuance using temporary HTTP-only Nginx configuration.
+- Deployment-managed certificate renewal scheduling and quieter renewal logs.
+- An encrypted application root volume on a newer pinned Ubuntu AMI,
+  with no EC2 SSH key pair configured.
+- Dependency version pinning, pip-tools management, Dependabot configuration,
+  and a dependency-maintenance runbook.
+- Database connectivity monitoring and safer monitoring configuration mounts.
+- Scheduled GHCR image cleanup and more selective CI/CD triggers.
+
+Verified:
+
+- Bootstrapped and deployed the application on a fresh EC2 instance.
+- Confirmed connectivity to the existing RDS database and matching migration state.
+- Issued production certificates from empty certificate volumes.
+- Moved the production Elastic IP and verified public HTTPS health.
+- Verified normal GitHub Actions deployment to the replacement instance.
+- Confirmed Prometheus scraped the replacement application's API and host targets.
+- Verified the installed renewal schedule and a successful renewal-check/reload run.
+- Retired the old application instance and confirmed a clean Terraform plan.

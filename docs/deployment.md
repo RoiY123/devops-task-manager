@@ -6,6 +6,10 @@ Production uses Amazon RDS for PostgreSQL.
 
 The database is private inside the VPC and accepts PostgreSQL traffic only from the application EC2 security group.
 
+RDS storage is encrypted. Automated backups are retained for seven days. AWS deletion protection and Terraform `prevent_destroy` protect the database against accidental deletion.
+
+Terraform-managed deletion requires a final snapshot. These settings provide recovery safeguards; they do not constitute a tested database restore procedure.
+
 Application connectivity is provided through `DATABASE_URL`, which is generated into `.env.prod` during deployment from AWS Systems Manager Parameter Store.
 
 Production migrations run automatically during deployment using the exact application image being deployed:
@@ -43,9 +47,26 @@ Do not edit production configuration directly on EC2. Update the corresponding P
 
 Production deployments are automated through GitHub Actions.
 
-A push to `main` runs CI, builds the application image, and deploys through AWS Systems Manager using OIDC authentication.
+A push to `main` runs CI, builds the application image, and deploys through AWS Systems Manager using OIDC authentication, unless all changed files are under `docs/` or are the root `README.md`.
+
+Pull requests to `main` still run checks for documentation-only changes.
+A push containing both documentation and other changes runs the normal
+workflow.
 
 The workflow supplies the exact Git commit SHA and its corresponding application image tag.
+
+
+The workflow discovers running instances using their `Name` tags:
+
+- Application: `task-manager-prod-api`
+- Monitoring: `task-manager-prod-monitoring`
+
+Exactly one running instance should match each production name.<br>
+The discovered application private IP is passed to monitoring deployment
+so Prometheus targets the current application host.
+
+The GitHub deployment IAM policy also restricts SSM commands to the Terraform-managed production instances. Instance names and IAM permissions
+must both be aligned when replacing a server.
 
 Deployment performs these steps:
 
@@ -166,6 +187,8 @@ Output is appended to:
 
 `/home/ubuntu/task-manager/certbot-renewal.log`
 
+Deployment removes unused Docker images, so a later renewal run may need to download the Certbot image again.
+
 A successful check does not necessarily mean a certificate was renewed. Certbot renews certificates when they are due.
 
 Update the schedule in Git. Direct edits to the managed file on EC2 are overwritten on the next deployment.<br>
@@ -199,6 +222,22 @@ The manual test skips Certbot's randomized renewal delay and displays progress d
 The scheduled renewal script retains the normal delay and writes output to certbot-renewal.log.
 
 A successful dry run validates renewal against Let's Encrypt's staging service without replacing production certificates. It does not verify the script's Nginx reload or prove that cron triggered the job.
+
+To verify the installed script and Nginx reload, run as `ubuntu` on the application instance:
+
+```bash
+/home/ubuntu/task-manager/scripts/renew-certificates.sh \
+  >> /home/ubuntu/task-manager/certbot-renewal.log 2>&1
+
+tail -n 40 /home/ubuntu/task-manager/certbot-renewal.log
+```
+
+The command may take several minutes because Certbot retains its normal randomized delay. Output is redirected to the log, so the terminal may remain silent until it finishes.
+
+Expected: a successful renewal-check message and a successful Nginx-reload message.<br>
+This invokes the real renewal procedure and may renew certificates if they are due.
+
+A manual run does not prove cron triggered the job. Check the log after a scheduled execution to verify scheduled operation.
 
 ## Monitoring deployment
 
@@ -263,27 +302,79 @@ RDS alerts are matched using the `service="rds"` label and use dedicated email f
 
 The runtime configuration directory is mounted into the Alertmanager container so regenerated configuration files can be reloaded safely.
 
-## Monitoring access
+## Administrative and monitoring access
 
-Grafana is exposed on port `3000` and restricted by the monitoring EC2 security group.
+Use AWS Systems Manager Session Manager for administrative access.<br> Inbound SSH is closed on both production instances.
 
-Prometheus and Alertmanager are bound only to the monitoring EC2 loopback interface and should be accessed through SSH tunnels.
+Interactive sessions are configured to run as `ubuntu`. GitHub Actions deployments use SSM Run Command and execute deployment scripts as root.
 
-Prometheus:
-
-```bash
-ssh -i /path/to/key.pem -L 9090:localhost:9090 ubuntu@MONITORING_EC2_PUBLIC_IP
-```
-
-Then open: `http://localhost:9090`
-
-Alertmanager:
+For an interactive session from a local terminal:
 
 ```bash
-ssh -i /path/to/key.pem -L 9093:localhost:9093 ubuntu@MONITORING_EC2_PUBLIC_IP
+aws ssm start-session \
+  --region il-central-1 \
+  --target INSTANCE_ID
 ```
 
-Then open: `http://localhost:9093`
+Replace `INSTANCE_ID` with the intended instance ID.
+
+Local CLI sessions require AWS credentials with the appropriate SSM permissions, the AWS CLI, and the Session Manager plugin installed.
+
+Grafana, Prometheus, and Alertmanager bind only to the monitoring host's loopback interface. Access them through SSM port forwarding.
+
+| Service | Remote/local port | Local URL |
+| --- | --- | --- |
+| Grafana | 3000 | http://localhost:3000 |
+| Prometheus | 9090 | http://localhost:9090 |
+| Alertmanager | 9093 | http://localhost:9093 |
+
+For example, forward Grafana from the monitoring instance:
+
+```bash
+aws ssm start-session \
+  --region il-central-1 \
+  --target MONITORING_INSTANCE_ID \
+  --document-name AWS-StartPortForwardingSession \
+  --parameters '{"portNumber":["3000"],"localPortNumber":["3000"]}'
+```
+
+Replace `MONITORING_INSTANCE_ID` with the current monitoring instance ID.<br>
+For Prometheus or Alertmanager, replace both port values using the table.
+
+Keep the terminal session open while using the service. Use separate terminals for simultaneous tunnels and press Ctrl+C to close each tunnel.
+
+No SSH key or monitoring public-IP address is needed for these sessions.
+
+## Application instance replacement
+
+The production application instance uses an encrypted root volume, a pinned Ubuntu AMI, IMDSv2, and no SSH key pair. Terraform `prevent_destroy` and AWS termination protection are enabled.
+
+Replacement is a planned maintenance operation. The verified approach is:
+
+1. Create a separate candidate instance through Terraform with the required network access, instance role, encrypted storage, and SSM connectivity.
+2. Run the prerequisite script and verify Docker, Compose, AWS access, and connectivity to the existing RDS database.
+3. Prepare the deployment script and matching application image from an exact Git commit. Review database migration compatibility before cutover.
+4. Prepare the Elastic IP change and a recovery command targeting the old instance. Pause normal deployments during the transition.
+5. Move the production Elastic IP to the candidate and deploy. With empty certificate volumes, HTTP validation must reach the candidate before initial certificates can be issued.
+6. Verify public HTTPS health, running services, and the renewal schedule.
+7. Align Terraform resource tracking, production instance names, and GitHub deployment permissions with the replacement.
+8. Run the normal deployment workflow and verify monitoring uses the new private IP, with application and Node Exporter targets reporting `UP`.
+9. Retire the old instance after verification, explicitly handling its termination protections and reviewing a destruction plan scoped to it.
+10. Confirm production health and a clean Terraform plan, and commit the final infrastructure configuration.
+
+This approach includes downtime between the Elastic IP switch and successful application startup with HTTPS.
+
+The old instance provides a temporary traffic-recovery option while retained. Moving the Elastic IP back does not undo database migrations. Recovery must account for compatibility between the old application and the current schema.
+
+Application data remains in RDS. Local certificate state, logs, and other files on an instance's root disk do not automatically transfer to its replacement.
+
+## Monitoring persistence
+
+Monitoring configuration, dashboards, data sources, and alert rules are provisioned from Git, with secrets supplied through Parameter Store.
+
+Prometheus history, Grafana runtime data, and Alertmanager state reside in Docker volumes on the monitoring instance. Recreating configuration does not restore those volumes.
+
+Before replacing the monitoring instance, back up required runtime data or explicitly accept its loss.
 
 ## Manual recovery and troubleshooting
 
@@ -344,5 +435,8 @@ Manual verification can also include:
 - Prometheus alert rules appearing in Grafana
 - provisioned RDS alert rules appearing in Grafana and evaluating normally
 - CloudWatch RDS metrics returning data in Grafana
-- Alertmanager reachable through its SSH tunnel
+- monitoring interfaces reachable through SSM port forwarding
+- Prometheus scraping FastAPI and Node Exporter from the current production application instance, with both targets reporting `UP`
+- `database_connection_up` reporting `1`
+- the managed certificate-renewal schedule installed and cron active
 - `alembic current` matching `alembic heads`

@@ -90,12 +90,23 @@ Completed:
 - Grafana-managed RDS alert rules provisioned from version-controlled YAML
 - RDS alerts for low storage, high CPU, low freeable memory, high read latency, high write latency, and high disk queue depth
 - Grafana-managed alerts forwarded to the existing Prometheus Alertmanager
+- SSM-based administration and port forwarding for private monitoring access
+- Restricted security-group rules and explicit IMDSv2 configuration
+- Non-root application container
+- Extended RDS backup retention and required final snapshot on deletion
+- Automated replacement-instance prerequisites, TLS bootstrap, and renewal scheduling
+- Verified production app replacement with an encrypted root disk, newer pinned AMI, and no SSH key pair
+- Verified deployment targeting, HTTPS health, and monitoring after replacement
+- Application-to-database connectivity monitoring and alerting
+- Pinned dependencies, Dependabot updates, and a dependency-maintenance runbook
+- Scheduled GHCR image cleanup
+- CI/CD filtering for docs-only pushes to main
 
 Current milestone:
-- Continuous Deployment automation completed
+- Production hardening and reproducibility implemented and verified
 
 Next milestone:
-- Project hardening and final polish
+- Portfolio presentation and remaining project polish
 
 ---
 
@@ -104,7 +115,7 @@ Next milestone:
 Current application:
 
 ```text
-Developer Push to main
+Non-docs-only Push to main
         ↓
 GitHub Actions
         ↓
@@ -348,7 +359,8 @@ Accepted
 
 Decision:
 
-Use GitHub Actions to deploy automatically after successful CI on the `main` branch.
+Use GitHub Actions to deploy automatically after successful CI for pushes to `main`, except when all changed files are under `docs/` or are the root `README.md`.<br>
+Keep pull-request checks enabled for all changes, including documentation.
 
 Authenticate GitHub Actions to AWS using OIDC instead of long-lived AWS credentials.
 Use AWS Systems Manager to run deployment commands on the application and monitoring EC2 instances without exposing deployment SSH credentials.
@@ -369,8 +381,16 @@ Accepted
 Decision:
 
 Use Docker Compose to orchestrate production services on AWS EC2.
+
 Terminate HTTPS with Nginx, issue TLS certificates using Let's Encrypt, and automate certificate renewal through Certbot and cron.
+
 Deploy prebuilt application images from GitHub Container Registry instead of building directly on the production server.
+
+Install missing host prerequisites through the deployment prerequisite script.<br>
+Generate runtime configuration from Parameter Store and bootstrap initial TLS certificates through temporary HTTP-only Nginx configuration when certificate state is absent.
+
+Manage the certificate-renewal schedule in Git and install it during deployment.<br>
+Keep renewal, reload status messages and errors in the renewal log while suppressing detailed Docker image-pull progress.
 
 Status:
 Accepted
@@ -394,6 +414,45 @@ Accepted
 
 ---
 
+### Production Security and Recovery
+
+Decision:
+
+Use AWS Systems Manager for administrative sessions and port forwarding. <br>
+Keep inbound SSH closed and bind monitoring web interfaces to loopback.
+
+Allow public HTTP and HTTPS access to the application host.<br>
+Restrict application and host metrics access to the monitoring security group, and PostgreSQL access to the application security group.
+
+Require IMDSv2 on both EC2 instances and run the application container as a dedicated non-root user.
+
+Use encrypted root storage and no SSH key pair on the production application instance.<br>
+Keep its AMI pinned and review AMI updates as deliberate infrastructure changes.
+
+Retain RDS automated backups for seven days, keep deletion protections enabled, and require a final snapshot for Terraform-managed database deletion.
+
+For planned application replacement, prepare a new instance alongside the old one, retain a temporary recovery option during cutover, and verify deployment, HTTPS, and monitoring before retiring the old instance.
+
+Status:
+Accepted
+
+---
+
+### Dependency and Image Maintenance
+
+Decision:
+
+Pin dependency and container-image versions and review updates through Dependabot and the procedure in `docs/dependency-maintenance.md`.
+
+Manage Python dependency inputs and compiled requirements with pip-tools. Check shared dependency versions across development, CI, and production when reviewing updates.
+
+Use scheduled GHCR cleanup and application-host image cleanup to control unused image accumulation.
+
+Status:
+Accepted
+
+---
+
 ### Monitoring and Alerting
 
 Decision:
@@ -404,7 +463,8 @@ Run Prometheus, Grafana, and Alertmanager on a dedicated monitoring EC2 instance
 
 Manage Grafana dashboards through version-controlled provisioning files rather than direct production UI changes.
 
-Use Prometheus alert rules for application availability, host monitoring availability, CPU, memory, and filesystem usage. Route firing and resolved notifications through Alertmanager using Gmail SMTP.
+Use Prometheus alert rules for application availability, application-to-database connectivity, host monitoring availability, CPU, memory, and filesystem usage.<br>
+Route firing and resolved notifications through Alertmanager using Gmail SMTP.
 
 Store monitoring secrets in AWS Systems Manager Parameter Store and generate the ignored `.env.monitoring` runtime file during deployment. Keep the Alertmanager configuration structure in a tracked template and generate the secret-bearing runtime configuration on the monitoring host.
 
@@ -412,16 +472,16 @@ Use Amazon CloudWatch as the metrics source for Amazon RDS and configure Grafana
 
 Use Grafana-managed alert rules for CloudWatch-backed RDS metrics, provision those rules from version-controlled YAML, and forward them to the existing external Prometheus Alertmanager. Keep Alertmanager as the central notification layer for both Prometheus and Grafana-managed alerts.
 
+Keep monitoring configuration reproducible through Git provisioning.<br> Historical metrics and other volume-backed runtime data require a separate backup or an explicit decision to accept their loss when replacing the monitoring instance.
+
 Status:
 Accepted
 
 ## Next Session
 
-Begin project hardening and final polish.
+Complete documentation alignment and review the remaining project work.
 
 Topics:
 
-- Review security and operational hardening
 - Review documentation and architecture consistency
-- Final project cleanup
-- Prepare the repository for portfolio presentation
+- Complete final repository cleanup and portfolio presentation
