@@ -14,7 +14,7 @@ cd "$PROJECT_DIR"
 docker compose \
   --env-file "$ENV_FILE" \
   -f "$COMPOSE_FILE" \
-  run --rm certbot renew --quiet
+  run --rm --quiet-pull certbot renew --quiet
 
 echo "$LOG_PREFIX Renewal check completed successfully"
 
