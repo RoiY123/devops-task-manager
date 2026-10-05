@@ -300,7 +300,7 @@ Accepted
 
 Decision:
 
-Give each business its own login URL using a path segment on the frontend (for example `/b/{slug}/login`) rather than a subdomain, which would require wildcard DNS and TLS. The URL supplies the business slug; the user enters only email and password.
+Give each business its own login URL using a path segment on the frontend (for example `/b/{slug}/login`) rather than a subdomain, which would require additional DNS and TLS configuration. The URL supplies the business slug; the user enters only email and password.
 
 The API receives the slug explicitly and looks up the user by business and lower-cased email, because the same email may exist in different businesses.<br>
 An unknown slug and incorrect credentials return the same generic `401` response. The JWT continues to carry only the user's ID (`sub`); the business is resolved from the database.
