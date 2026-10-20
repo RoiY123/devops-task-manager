@@ -4,6 +4,10 @@ Revision ID: 32721ce95d01
 Revises: 505aa916db66
 Create Date: 2026-07-22 21:00:59.178882
 
+Known issue: downgrade() drops the owner foreign key without a name, which
+Alembic cannot do, so it is expected to fail. It has never been executed.
+Downgrading below this revision is unsupported until it is fixed to drop the
+database's actual constraint name.
 """
 from typing import Sequence, Union
 
