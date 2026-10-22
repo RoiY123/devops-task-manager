@@ -1,9 +1,50 @@
-from sqlalchemy import Boolean, Integer, String, ForeignKey
+from datetime import datetime
+
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class Business(Base):
+    __tablename__ = "businesses"
+
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_businesses_slug"),
+        # ASCII-only slugs keep business login URLs readable and easy to share.
+        CheckConstraint(
+            "slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'",
+            name="ck_businesses_slug_format",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # Display name; may be Hebrew.
+    name: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+    )
+
+    slug: Mapped[str] = mapped_column(
+        String(63),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    # Do not delete or detach users when deleting a business.
+    # Let the database reject the deletion if users remain.
+    users: Mapped[list["User"]] = relationship(
+        back_populates="business",
+        passive_deletes="all",
+    )
 
 
 class Task(Base):
@@ -48,6 +89,24 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(
         String(255),
         nullable=False,
+    )
+
+    # The database also has a temporary default (the legacy business)
+    # so the previous app version can still insert users.
+    # Application code must set business_id explicitly.
+    # The default is removed in the operator-onboarding milestone.
+    business_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "businesses.id",
+            name="fk_users_business_id_businesses",
+            ondelete="RESTRICT",
+        ),
+        nullable=False,
+        index=True,
+    )
+
+    business: Mapped["Business"] = relationship(
+        back_populates="users",
     )
 
     tasks: Mapped[list["Task"]] = relationship(

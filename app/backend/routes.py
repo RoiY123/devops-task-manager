@@ -3,10 +3,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.backend.database import get_db
-from app.backend.models import Task as TaskModel, User
+from app.backend.models import Business, Task as TaskModel, User
 from app.backend.schemas import Task, TaskCreate, TaskUpdate, UserCreate, UserLogin, UserResponse, Token
 from app.backend.security import create_access_token, hash_password, verify_password, get_current_user
 
+
+LEGACY_BUSINESS_SLUG = "legacy"
 
 router = APIRouter()
 
@@ -146,9 +148,19 @@ def register_user(
             detail="Email is already registered",
         )
     
+    # Temporary until the operator-onboarding milestone replaces public
+    # registration: new users join the legacy business.
+    legacy_business_id = db.scalar(
+        select(Business.id).where(Business.slug == LEGACY_BUSINESS_SLUG)
+    )
+
+    if legacy_business_id is None:
+        raise RuntimeError("Legacy business is missing; run database migrations")
+
     user = User(
         email=user_data.email,
         hashed_password=hash_password(user_data.password),
+        business_id=legacy_business_id,
     )
 
     db.add(user)

@@ -19,6 +19,19 @@ docs/project-notes.md records decisions, docs/learning-log.md records milestones
 - Tell me when we reach a good commit and push point, but wait for my instruction.
 - Update documentation with actual results; do not mark unrun tests or
   undeployed changes as verified or deployed.
+- Explain changes as you implement them, in small logical batches.
+- Before each batch, briefly explain:
+  1. What behavior or problem we are addressing.
+  2. Which files you will change and what their roles are.
+  3. How the change works, using plain language and a concrete example where helpful.
+- Introduce unfamiliar terms with a short explanation when first used.
+  Do not assume backend development knowledge.
+- After each batch, summarize what changed and what the next check will prove.
+  Explain test results and any limitations.
+- Avoid vague progress updates such as "now the tests." Name the behavior being tested and why it matters.
+- Focus on meaningful code blocks, not every import, bracket, or obvious line.
+  Explain database migrations, deployment effects, and permissions more carefully.
+- Write concise code comments that explain why a decision exists or a non-obvious constraint. Avoid comments that merely repeat the code.
 
 ## Never without my explicit instruction
 

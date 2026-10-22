@@ -63,8 +63,11 @@ jobs:
       - name: Run database migrations
         run: alembic upgrade head
       
-      - name: Run tests
-        run: python -m pytest -v
+      - name: Run migration tests
+        run: python -m pytest -v tests/migrations
+
+      - name: Run application tests
+        run: python -m pytest -v --ignore=tests/migrations
 
       - name: Validate production Compose configuration
         run: docker compose --env-file .env.prod.example -f compose.prod.yml config --quiet

@@ -23,6 +23,35 @@ def test_create_task(
     assert "id" in data
 
 
+def test_mixed_hebrew_and_english_task_title_round_trip(
+        client: TestClient,
+        auth_headers_factory,
+) -> None:
+    headers = auth_headers_factory("alice@example.com")
+    title = "לתקן את ה-API לפני 10:00"
+
+    create_response = client.post(
+        "/tasks",
+        json={
+            "title": title,
+        },
+        headers=headers,
+    )
+
+    assert create_response.status_code == 201
+    assert create_response.json()["title"] == title
+
+    task_id = create_response.json()["id"]
+
+    get_response = client.get(
+        f"/tasks/{task_id}",
+        headers=headers,
+    )
+
+    assert get_response.status_code == 200
+    assert get_response.json()["title"] == title
+
+
 def test_create_task_requires_authentication(client: TestClient) -> None:
     response = client.post(
         "/tasks",
