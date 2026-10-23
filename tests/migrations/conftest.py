@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
 
 
@@ -60,6 +60,16 @@ def disposable_db_url(
             )
 
         admin_engine.dispose()
+
+
+@pytest.fixture
+def engine(disposable_db_url: str) -> Generator[Engine, None, None]:
+    engine = create_engine(disposable_db_url)
+
+    try:
+        yield engine
+    finally:
+        engine.dispose()
 
 
 @pytest.fixture

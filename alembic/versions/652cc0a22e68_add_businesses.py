@@ -17,7 +17,7 @@ Temporary compatibility measure:
     explicitly and must not rely on the default.
 
 Removal condition:
-    Remove the default in the operator-onboarding milestone, once every
+    Remove the default when public registration is closed, once every
     deployable or rollback-candidate image sets business_id explicitly.
     Keeping it longer risks silently placing users in the legacy business.
 
@@ -107,7 +107,7 @@ def upgrade() -> None:
     )
 
     # The old app does not send business_id, so assign its new users to Legacy
-    # until the operator-onboarding milestone removes this default.
+    # until public registration is closed and this default is removed.
     # PostgreSQL defaults cannot contain subqueries, so the id is a literal.
     op.alter_column(
         'users',

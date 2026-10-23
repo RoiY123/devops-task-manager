@@ -148,8 +148,8 @@ def register_user(
             detail="Email is already registered",
         )
     
-    # Temporary until the operator-onboarding milestone replaces public
-    # registration: new users join the legacy business.
+    # Temporary until public registration is closed:
+    # new users join the legacy business.
     legacy_business_id = db.scalar(
         select(Business.id).where(Business.slug == LEGACY_BUSINESS_SLUG)
     )

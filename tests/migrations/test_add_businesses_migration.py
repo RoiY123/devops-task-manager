@@ -1,9 +1,6 @@
-from collections.abc import Generator
-
-import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Connection, Engine, create_engine, inspect, text
+from sqlalchemy import Connection, Engine, inspect, text
 
 
 # Explicit revisions (not "head") keep these tests valid after later migrations.
@@ -23,16 +20,6 @@ SEED_TASKS = [
     ("alice@example.com", "בדיקת גיבוי RDS", False),
     ("bob@example.com", "Rotate JWT secret", True),
 ]
-
-
-@pytest.fixture
-def engine(disposable_db_url: str) -> Generator[Engine, None, None]:
-    engine = create_engine(disposable_db_url)
-
-    try:
-        yield engine
-    finally:
-        engine.dispose()
 
 
 def seed_pre_migration_data(connection: Connection) -> None:
