@@ -88,6 +88,7 @@ Production uses a single application instance. Planned instance replacement invo
 ## Explore the project
 
 - [Deployment and operations](docs/deployment.md)
+- [Operator tasks](docs/operator-tasks.md)
 - [Dependency maintenance](docs/dependency-maintenance.md)
 - [Architecture decisions and project notes](docs/project-notes.md)
 - [Learning milestones](docs/learning-log.md)

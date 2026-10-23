@@ -74,8 +74,19 @@ class Task(Base):
     )
 
 
+ROLE_ADMIN = "admin"
+ROLE_MEMBER = "member"
+
+
 class User(Base):
     __tablename__ = "users"
+
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('admin', 'member')",
+            name="ck_users_role",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
@@ -94,7 +105,7 @@ class User(Base):
     # The database also has a temporary default (the legacy business)
     # so the previous app version can still insert users.
     # Application code must set business_id explicitly.
-    # The default is removed in the operator-onboarding milestone.
+    # The default is removed when public registration is closed.
     business_id: Mapped[int] = mapped_column(
         ForeignKey(
             "businesses.id",
@@ -107,6 +118,14 @@ class User(Base):
 
     business: Mapped["Business"] = relationship(
         back_populates="users",
+    )
+
+    # Missing roles default to the lowest permission, which keeps older
+    # application versions safe to run against this schema.
+    role: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=ROLE_MEMBER,
     )
 
     tasks: Mapped[list["Task"]] = relationship(
