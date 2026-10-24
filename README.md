@@ -69,7 +69,13 @@ Compose also starts PostgreSQL and waits for its health check.
 - [Interactive API documentation](http://localhost:8000/docs)
 - [Health endpoint](http://localhost:8000/health)
 
-Register through `/register`, obtain a token through `/login`, and send it as `Authorization: Bearer <token>` when calling `/tasks`.
+Accounts are created by the operator; there is no public registration. Create a local business and its first administrator with:
+
+```bash
+docker compose exec app python -m app.backend.cli create-business --name "עסק מקומי" --slug local-business --admin-email admin@local.example
+```
+
+The command prompts for the administrator password. Obtain a token through `/login` and send it as `Authorization: Bearer <token>` when calling `/tasks`. For production, see [Operator tasks](docs/operator-tasks.md).
 
 Stop the local services with:
 

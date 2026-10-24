@@ -3,12 +3,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.backend.database import get_db
-from app.backend.models import Business, Task as TaskModel, User
-from app.backend.schemas import Task, TaskCreate, TaskUpdate, UserCreate, UserLogin, UserResponse, Token
-from app.backend.security import create_access_token, hash_password, verify_password, get_current_user
+from app.backend.models import Task as TaskModel, User
+from app.backend.schemas import Task, TaskCreate, TaskUpdate, UserLogin, Token
+from app.backend.security import create_access_token, verify_password, get_current_user
 
-
-LEGACY_BUSINESS_SLUG = "legacy"
 
 router = APIRouter()
 
@@ -129,47 +127,8 @@ def delete_task(
     db.commit()
 
 
-@router.post(
-    "/register",
-    response_model=UserResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def register_user(
-    user_data: UserCreate,
-    db: Session = Depends(get_db),
-):
-    existing_user = db.scalar(
-        select(User).where(User.email == user_data.email)
-    )
-
-    if existing_user is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email is already registered",
-        )
-    
-    # Temporary until public registration is closed:
-    # new users join the legacy business.
-    legacy_business_id = db.scalar(
-        select(Business.id).where(Business.slug == LEGACY_BUSINESS_SLUG)
-    )
-
-    if legacy_business_id is None:
-        raise RuntimeError("Legacy business is missing; run database migrations")
-
-    user = User(
-        email=user_data.email,
-        hashed_password=hash_password(user_data.password),
-        business_id=legacy_business_id,
-    )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    return user
-
-
+# Accounts are created by the operator (app/backend/cli.py);
+# there is deliberately no public registration endpoint.
 @router.post(
     "/login",
     response_model=Token,

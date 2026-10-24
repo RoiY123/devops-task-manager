@@ -8,17 +8,21 @@ Commands below run through an interactive SSM session on the application instanc
 
 Businesses and their first administrators are created by the operator with a command inside the running API container. There is no public endpoint for this.
 
-From a local terminal, open an interactive session on the application instance:
+Open an interactive session on the application instance. Local PowerShell, from the repository folder; one command:
 
 ```powershell
 ./scripts/ssm-shell.ps1 app
 ```
 
-Then, as `ubuntu`:
+In the SSM session, as `ubuntu`, run first:
 
 ```bash
 cd /home/ubuntu/task-manager
+```
 
+Then paste the following as one block: It prompts for the password twice; type or paste only the password at each prompt.
+
+```bash
 docker compose --env-file .env.prod -f compose.prod.yml \
   exec api python -m app.backend.cli create-business \
   --name "BUSINESS_DISPLAY_NAME" \
