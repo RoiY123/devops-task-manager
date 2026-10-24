@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.backend.database import get_db
 from app.backend.main import app
+from app.backend.models import ROLE_MEMBER, Business, User
+from app.backend.security import hash_password
 
 
 TEST_DATABASE_URL = os.getenv(
@@ -55,20 +57,49 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
 
 
 @pytest.fixture
-def auth_headers_factory(client: TestClient):
+def test_business(db_session: Session) -> Business:
+    business = Business(name="עסק בדיקות", slug="test-business")
+    db_session.add(business)
+    db_session.flush()
+
+    return business
+
+
+@pytest.fixture
+def user_factory(db_session: Session, test_business: Business):
+    # Public registration is closed, so tests create users directly,
+    # the same way the operator's onboarding code does.
+    def create_user(
+        email: str,
+        password: str = "password123",
+        role: str = ROLE_MEMBER,
+    ) -> User:
+        user = User(
+            email=email,
+            hashed_password=hash_password(password),
+            business=test_business,
+            role=role,
+        )
+        db_session.add(user)
+        db_session.flush()
+
+        return user
+
+    return create_user
+
+
+@pytest.fixture
+def auth_headers_factory(client: TestClient, user_factory):
     def create_user(
         email: str,
         password: str = "password123",
     ) -> dict[str, str]:
-        user_data = {
-            "email": email,
-            "password": password,
-        }
+        user_factory(email, password)
 
-        register_response = client.post("/register", json=user_data)
-        assert register_response.status_code == 201
-
-        login_response = client.post("/login", json=user_data)
+        login_response = client.post(
+            "/login",
+            json={"email": email, "password": password},
+        )
         assert login_response.status_code == 200
 
         access_token = login_response.json()["access_token"]

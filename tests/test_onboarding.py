@@ -125,39 +125,33 @@ def test_hebrew_name_is_stored_in_normalized_form(db_session: Session) -> None:
     assert db_session.get(Business, result.business_id).name == holam_first
 
 
-def test_registered_users_are_members(
-    client: TestClient,
+def test_users_created_without_role_are_members(
     db_session: Session,
+    test_business: Business,
 ) -> None:
-    response = client.post(
-        "/register",
-        json={
-            "email": "member@example.com",
-            "password": "password123",
-        },
+    user = User(
+        email="member@example.com",
+        hashed_password="not-a-real-hash",
+        business=test_business,
     )
-
-    assert response.status_code == 201
-
-    user = db_session.scalar(
-        select(User).where(User.email == "member@example.com")
-    )
+    db_session.add(user)
+    db_session.flush()
+    db_session.refresh(user)
 
     assert user.role == ROLE_MEMBER
 
 
-def test_database_rejects_unknown_role(db_session: Session) -> None:
-    legacy_id = db_session.scalar(
-        select(Business.id).where(Business.slug == "legacy")
-    )
-
+def test_database_rejects_unknown_role(
+    db_session: Session,
+    test_business: Business,
+) -> None:
     with pytest.raises(IntegrityError):
         with db_session.begin_nested():
             db_session.add(
                 User(
                     email="owner@example.com",
                     hashed_password="not-a-real-hash",
-                    business_id=legacy_id,
+                    business=test_business,
                     role="owner",
                 )
             )

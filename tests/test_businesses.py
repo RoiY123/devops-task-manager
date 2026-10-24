@@ -1,32 +1,20 @@
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.backend.models import Business, User
 
 
-def test_registered_user_joins_legacy_business(
-    client: TestClient,
-    db_session: Session,
-) -> None:
-    response = client.post(
-        "/register",
-        json={
-            "email": "alice@example.com",
-            "password": "password123",
-        },
-    )
-
-    assert response.status_code == 201
-
-    user = db_session.scalar(
-        select(User).where(User.email == "alice@example.com")
-    )
-
-    assert user is not None
-    assert user.business.slug == "legacy"
+def test_user_without_business_is_rejected(db_session: Session) -> None:
+    with pytest.raises(IntegrityError):
+        with db_session.begin_nested():
+            db_session.add(
+                User(
+                    email="nobody@example.com",
+                    hashed_password="not-a-real-hash",
+                )
+            )
 
 
 def test_business_with_users_cannot_be_deleted(db_session: Session) -> None:

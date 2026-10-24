@@ -102,10 +102,8 @@ class User(Base):
         nullable=False,
     )
 
-    # The database also has a temporary default (the legacy business)
-    # so the previous app version can still insert users.
-    # Application code must set business_id explicitly.
-    # The default is removed when public registration is closed.
+    # No default: every code path that creates a user must choose its business,
+    # so a missing business fails instead of silently picking one.
     business_id: Mapped[int] = mapped_column(
         ForeignKey(
             "businesses.id",
