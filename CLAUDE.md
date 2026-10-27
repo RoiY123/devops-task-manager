@@ -11,7 +11,8 @@ docs/project-notes.md records decisions, docs/learning-log.md records milestones
 - Keep milestones small. For each, list affected files, database migration implications,
   and the tests that prove it.
 - Separate verified findings (read in the repo or observed output) from assumptions.
-- After a milestone, update docs/project-notes.md and docs/learning-log.md.
+- After a DevOps milestone, update docs/project-notes.md and docs/learning-log.md
+  with DevOps topics or critical information only, not backend details.
 - Before editing, check the current branch and working tree. Preserve unrelated
   changes and do not implement directly on main.
 - Stop after the approved milestone. Summarize changes, tests actually run,

@@ -2,7 +2,9 @@
 
 A small task-management API with a production-style delivery and operations setup on AWS.
 
-The application supports registration, JWT authentication, and private task lists. The project focuses on the work around the API: automated deployments, infrastructure as code, monitoring, security, and replacing production compute reliably.
+The application supports multiple businesses onboarded by the operator, JWT authentication, and private task lists.
+
+The project focuses on the work around the API: automated deployments, infrastructure as code, monitoring, security, and replacing production compute reliably.
 
 ## What this project demonstrates
 
@@ -93,8 +95,9 @@ Production uses a single application instance. Planned instance replacement invo
 
 ## Explore the project
 
-- [Deployment and operations](docs/deployment.md)
+- [Deployment](docs/deployment.md)
 - [Operator tasks](docs/operator-tasks.md)
+- [Recovery](docs/recovery.md)
 - [Dependency maintenance](docs/dependency-maintenance.md)
 - [Architecture decisions and project notes](docs/project-notes.md)
 - [Learning milestones](docs/learning-log.md)

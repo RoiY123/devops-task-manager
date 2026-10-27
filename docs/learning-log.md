@@ -421,3 +421,45 @@ Verified:
 - Confirmed Prometheus scraped the replacement application's API and host targets.
 - Verified the installed renewal schedule and a successful renewal-check/reload run.
 - Retired the old application instance and confirmed a clean Terraform plan.
+
+## Milestone 17 — Safe schema changes for multi-business support
+
+Goal:
+
+Add multi-business support to the live production database while the
+previous version keeps serving, and move account creation to an
+operator-controlled process.
+
+Learned:
+
+- Why the previous and new application versions overlap during a deploy, and why each migration must work with the version still serving.
+- How a temporary database default can bridge that overlap, and why it needs a documented removal condition.
+- Why reverting application code does not revert a migration, and how a schema change can create a rollback point of no return.
+- Why rollback restrictions belong next to the migration that causes them.
+- Why migrations should be tested against populated data, and how disposable databases keep those tests away from production.
+- How to run interactive operator commands over SSM, and why hidden password prompts need a real terminal (`docker compose exec` without `-T`).
+- How to make a one-off production data change safely: read first, then change inside one guarded transaction.
+
+Built:
+
+- Business tenancy schema, with a `legacy` business for existing users.
+- CI migration tests that upgrade populated disposable databases and run downgrade round trips, with a guard that allows only local database hosts.
+- Separate CI steps for migration tests and application tests.
+- An operator onboarding command run inside the production container over SSM.
+- Removal of public registration and of the temporary compatibility default.
+- An operator runbook and dedicated recovery documentation.
+
+Verified:
+
+- Production migrations `652cc0a22e68`, `d217ba767047`, and `46c6a6bfb8b4` applied through normal deployments with existing data preserved.
+- The production database uses `UTF8` encoding.
+- A test business onboarded over SSM with its Hebrew name stored in the correct order, and its administrator logged in through the public API.
+- `POST /register` returns `404` in production.
+
+Git:
+
+feat: add businesses and assign users to a business
+
+feat: add user roles and operator onboarding command
+
+feat!: close public registration and remove legacy business default

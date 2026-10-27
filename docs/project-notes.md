@@ -46,7 +46,7 @@ Completed:
 - PostgreSQL integration
 - SQLAlchemy ORM
 - Alembic migrations
-- User registration
+- Operator-created user accounts (public registration closed)
 - Password hashing
 - Login endpoint
 - JWT authentication
@@ -101,12 +101,14 @@ Completed:
 - Pinned dependencies, Dependabot updates, and a dependency-maintenance runbook
 - Scheduled GHCR image cleanup
 - CI/CD filtering for docs-only pushes to main
+- Business tenancy with operator onboarding over SSM
+- Migration tests against populated disposable PostgreSQL databases in CI
 
 Current milestone:
-- Production hardening and reproducibility implemented and verified
+- Multi-business support: tenancy foundation, operator onboarding, and closed public registration implemented and verified in production
 
 Next milestone:
-- Portfolio presentation and remaining project polish
+- Platform administration: operator management of users in every business, including password resets
 
 ---
 
@@ -241,9 +243,9 @@ Accepted
 
 ### Git Workflow
 
-- Small logical commits
-- Conventional Commits
-- Push after every milestone
+- Feature branch, pull request to `main`, squash merge
+- Small logical commits with Conventional Commits
+- Merging to `main` deploys to production unless only documentation changed
 
 Status:
 Accepted
@@ -290,6 +292,32 @@ Decision:
 
 Use Argon2 (`pwdlib`) for password hashing and JWT access tokens for stateless authentication.
 Store only hashed passwords in the database and include only the authenticated user's ID (`sub`) in the JWT payload.
+
+Status:
+Accepted
+
+---
+
+### Multi-business Tenancy
+
+Decision:
+
+Serve multiple independent businesses from one application and database. Every user account belongs to exactly one business, and business data stays isolated.
+
+Businesses and their first administrators are created by the operator with a command run over SSM; there is no public registration. Users who existed before tenancy were kept in a `legacy` business.
+
+Status:
+Accepted
+
+---
+
+### Hebrew-first Product Language
+
+Decision:
+
+Hebrew is the primary user-facing language. Business names and task content must support Hebrew, so every PostgreSQL database must use `UTF8` encoding; check `SHOW server_encoding;` after any database recreation or restore.
+
+Business slugs used in URLs are ASCII-only. The future frontend must use a right-to-left layout and handle mixed Hebrew and English text.
 
 Status:
 Accepted
@@ -375,7 +403,7 @@ Accepted
 
 Decision:
 
-Use GitHub Actions to deploy automatically after successful CI for pushes to `main`, except when all changed files are under `docs/` or are the root `README.md`.<br>
+Use GitHub Actions to deploy automatically after successful CI for pushes to `main`, except when all changed files are under `docs/` or are the root `README.md` or `CLAUDE.md`.<br>
 Keep pull-request checks enabled for all changes, including documentation.
 
 Authenticate GitHub Actions to AWS using OIDC instead of long-lived AWS credentials.
@@ -386,6 +414,19 @@ Generate production runtime configuration from AWS Systems Manager Parameter Sto
 
 Run Alembic migrations using the exact application image being deployed before reconciling the API service.
 Deploy monitoring configuration automatically and verify Prometheus, Grafana, and Alertmanager readiness before considering the deployment successful.
+
+Status:
+Accepted
+
+---
+
+### Schema Changes During Deployment
+
+Decision:
+
+Migrations run while the previous application version is still serving, and that version may be restored afterwards. Keep each migration compatible with it. Record temporary compatibility measures, their removal conditions, and rollback restrictions in the migration's docstring.
+
+Hand-write migrations that move data and name every constraint. Test migrations in CI against disposable PostgreSQL databases, including populated-data upgrades and downgrade round trips. Migration tests refuse to run unless the database host is local (`localhost`, `127.0.0.1`, or the CI `postgres` service), as a guard against accidentally targeting RDS.
 
 Status:
 Accepted
@@ -492,12 +533,3 @@ Keep monitoring configuration reproducible through Git provisioning.<br> Histori
 
 Status:
 Accepted
-
-## Next Session
-
-Complete documentation alignment and review the remaining project work.
-
-Topics:
-
-- Review documentation and architecture consistency
-- Complete final repository cleanup and portfolio presentation
