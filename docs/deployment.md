@@ -128,6 +128,10 @@ establish application health.
 
 Nginx terminates HTTPS using a Let's Encrypt certificate covering `roiy.dev` and `api.roiy.dev`.
 
+Nginx forwards HTTPS requests to the API, with two exceptions:
+- `/metrics` returns `404`. The API's security group rule restricts only direct access to port 8000, so the proxy must block the path itself; Prometheus scrapes port 8000 directly.
+- `/login` is rate-limited per client IP (10 requests per minute with a burst of 5). Excess attempts receive `429` without reaching the API.
+
 Certificate state is stored in the Compose named volume `certbot_certs`.<br>
 Certbot writes to this volume, and Nginx mounts it read-only.<br>
 The shared `certbot_webroot` volume holds HTTP validation files.

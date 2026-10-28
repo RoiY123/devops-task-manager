@@ -66,6 +66,14 @@ curl -s https://api.roiy.dev/health
 
 Expected: `{"status":"healthy"}`.
 
+To check that metrics are not public, one command:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://api.roiy.dev/metrics
+```
+
+Expected: `404`. Prometheus scrapes the API directly on port 8000, so this does not affect monitoring.
+
 To check that an account can log in, from the repository folder. This line prompts for the password; run it alone:
 
 ```bash
@@ -79,7 +87,11 @@ ADMIN_EMAIL='ADMIN_EMAIL' ADMIN_PASSWORD="$ADMIN_PASSWORD" .venv/Scripts/python 
   | curl -s -o /dev/null -w "%{http_code}\n" -H "Content-Type: application/json" --data @- https://api.roiy.dev/login
 ```
 
-Expected: `200`. `401` means the email or password is wrong. Then one command:
+Expected: `200`.<br>
+`401` means the email or password is wrong.<br>
+`429` means too many recent attempts from your IP; wait a minute and retry.
+
+Then one command:
 
 ```bash
 unset ADMIN_PASSWORD
