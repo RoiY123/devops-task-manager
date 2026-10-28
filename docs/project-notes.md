@@ -479,7 +479,8 @@ Use AWS Systems Manager for administrative sessions and port forwarding. <br>
 Keep inbound SSH closed and bind monitoring web interfaces to loopback.
 
 Allow public HTTP and HTTPS access to the application host.<br>
-Restrict application and host metrics access to the monitoring security group, and PostgreSQL access to the application security group.
+Restrict application and host metrics access to the monitoring security group, and PostgreSQL access to the application security group.<br>
+Block `/metrics` in Nginx, because a security group cannot restrict paths the reverse proxy forwards, and rate-limit `/login` per client IP to slow password guessing.
 
 Require IMDSv2 on both EC2 instances and run the application container as a dedicated non-root user.
 
