@@ -30,7 +30,12 @@ def db_session() -> Generator[Session, None, None]:
     connection = test_engine.connect()
     transaction = connection.begin()
 
-    session = TestingSessionLocal(bind=connection)
+    # Commits and rollbacks inside application code act on a savepoint,
+    # so they cannot end the outer transaction that isolates each test.
+    session = TestingSessionLocal(
+        bind=connection,
+        join_transaction_mode="create_savepoint",
+    )
 
     try:
         yield session
