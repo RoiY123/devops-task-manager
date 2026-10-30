@@ -170,17 +170,22 @@ def test_user_only_sees_their_own_tasks(
     alice_headers = auth_headers_factory("alice@example.com")
     bob_headers = auth_headers_factory("bob@example.com")
 
-    client.post(
+    alice_create = client.post(
         "/tasks",
         json={"title": "Alice's task"},
         headers=alice_headers,
     )
 
-    client.post(
+    bob_create = client.post(
         "/tasks",
         json={"title": "Bob's task"},
         headers=bob_headers,
     )
+
+    # Without these, a failed create for Bob would leave the test passing
+    # while proving nothing about isolation.
+    assert alice_create.status_code == 201
+    assert bob_create.status_code == 201
 
     alice_response = client.get(
         "/tasks",

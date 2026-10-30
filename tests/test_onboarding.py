@@ -6,8 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.backend.accounts import OperatorError
 from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, User
-from app.backend.onboarding import OnboardingError, create_business_with_admin
+from app.backend.onboarding import create_business_with_admin
 
 
 VALID = {
@@ -74,17 +75,17 @@ def test_invalid_input_is_rejected_and_nothing_is_saved(
 ) -> None:
     data = {**VALID, **overrides}
 
-    with pytest.raises(OnboardingError, match=message):
+    with pytest.raises(OperatorError, match=message):
         create_business_with_admin(db_session, **data)
 
     assert business_count(db_session, data["slug"].strip()) == 0
     assert user_count(db_session, data["admin_email"].strip()) == 0
 
 
-def test_duplicate_slug_is_rejected(db_session: Session) -> None:
+def test_onboarding_rejects_duplicate_slug(db_session: Session) -> None:
     create_business_with_admin(db_session, **VALID)
 
-    with pytest.raises(OnboardingError, match="already used"):
+    with pytest.raises(OperatorError, match="already used"):
         create_business_with_admin(
             db_session,
             **{**VALID, "admin_email": "other@cohen.example"},
@@ -99,10 +100,24 @@ def test_taken_email_does_not_leave_a_business_without_admin(
 ) -> None:
     create_business_with_admin(db_session, **VALID)
 
-    with pytest.raises(OnboardingError, match="already registered"):
+    with pytest.raises(OperatorError, match="already registered"):
         create_business_with_admin(
             db_session,
             **{**VALID, "slug": "cohen-electric"},
+        )
+
+    assert business_count(db_session, "cohen-electric") == 0
+
+
+def test_email_differing_only_in_capitals_counts_as_taken(
+    db_session: Session,
+) -> None:
+    create_business_with_admin(db_session, **VALID)
+
+    with pytest.raises(OperatorError, match="already registered"):
+        create_business_with_admin(
+            db_session,
+            **{**VALID, "slug": "cohen-electric", "admin_email": "Dana@Cohen.example"},
         )
 
     assert business_count(db_session, "cohen-electric") == 0
@@ -145,7 +160,7 @@ def test_database_rejects_unknown_role(
     db_session: Session,
     test_business: Business,
 ) -> None:
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError, match="ck_users_role"):
         with db_session.begin_nested():
             db_session.add(
                 User(

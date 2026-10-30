@@ -6,6 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.backend.accounts import (
+    OperatorError,
+    check_password,
+    clean_email,
+    ensure_email_is_free,
+)
 from app.backend.models import ROLE_ADMIN, Business, User
 from app.backend.security import hash_password
 
@@ -16,12 +22,13 @@ SLUG_PATTERN = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 
 MAX_NAME_LENGTH = 200
 MAX_SLUG_LENGTH = 63
-MAX_EMAIL_LENGTH = 320
-MIN_ADMIN_PASSWORD_LENGTH = 12
 
 
-class OnboardingError(ValueError):
-    """Rejected onboarding input. The message is safe to show the operator."""
+@dataclass(frozen=True)
+class NewBusiness:
+    name: str
+    slug: str
+    admin_email: str
 
 
 @dataclass(frozen=True)
@@ -39,6 +46,41 @@ def normalize_name(name: str) -> str:
     return unicodedata.normalize("NFC", name).strip()
 
 
+def validate_new_business(
+    db: Session,
+    *,
+    name: str,
+    slug: str,
+    admin_email: str,
+) -> NewBusiness:
+    """Check everything except the password, so the CLI can fail before prompting."""
+    name = normalize_name(name)
+    slug = slug.strip()
+
+    if not name:
+        raise OperatorError("Business name must not be empty")
+
+    if len(name) > MAX_NAME_LENGTH:
+        raise OperatorError(
+            f"Business name must be at most {MAX_NAME_LENGTH} characters"
+        )
+
+    if len(slug) > MAX_SLUG_LENGTH or not SLUG_PATTERN.fullmatch(slug):
+        raise OperatorError(
+            f"Slug {slug!r} is invalid: use lowercase letters, digits and "
+            f"single hyphens, at most {MAX_SLUG_LENGTH} characters"
+        )
+
+    admin_email = clean_email(admin_email)
+
+    if db.scalar(select(Business.id).where(Business.slug == slug)) is not None:
+        raise OperatorError(f"Slug {slug!r} is already used by another business")
+
+    ensure_email_is_free(db, admin_email)
+
+    return NewBusiness(name=name, slug=slug, admin_email=admin_email)
+
+
 def create_business_with_admin(
     db: Session,
     *,
@@ -47,43 +89,14 @@ def create_business_with_admin(
     admin_email: str,
     admin_password: str,
 ) -> OnboardedBusiness:
-    name = normalize_name(name)
-    slug = slug.strip()
-    admin_email = admin_email.strip()
+    # Validated again here: the slug or email may have been taken
+    # while the operator was typing the password.
+    new = validate_new_business(db, name=name, slug=slug, admin_email=admin_email)
+    check_password(admin_password)
 
-    if not name:
-        raise OnboardingError("Business name must not be empty")
-
-    if len(name) > MAX_NAME_LENGTH:
-        raise OnboardingError(
-            f"Business name must be at most {MAX_NAME_LENGTH} characters"
-        )
-
-    if len(slug) > MAX_SLUG_LENGTH or not SLUG_PATTERN.fullmatch(slug):
-        raise OnboardingError(
-            f"Slug {slug!r} is invalid: use lowercase letters, digits and "
-            f"single hyphens, at most {MAX_SLUG_LENGTH} characters"
-        )
-
-    if "@" not in admin_email or len(admin_email) > MAX_EMAIL_LENGTH:
-        raise OnboardingError(f"Admin email {admin_email!r} is invalid")
-
-    if len(admin_password) < MIN_ADMIN_PASSWORD_LENGTH:
-        raise OnboardingError(
-            f"Admin password must be at least "
-            f"{MIN_ADMIN_PASSWORD_LENGTH} characters"
-        )
-
-    if db.scalar(select(Business.id).where(Business.slug == slug)) is not None:
-        raise OnboardingError(f"Slug {slug!r} is already used by another business")
-
-    # Email is still unique across all businesses until business-specific login exists.
-    if db.scalar(select(User.id).where(User.email == admin_email)) is not None:
-        raise OnboardingError(f"Email {admin_email!r} is already registered")
-
-    business = Business(name=name, slug=slug)
+    business = Business(name=new.name, slug=new.slug)
     admin = User(
-        email=admin_email,
+        email=new.admin_email,
         hashed_password=hash_password(admin_password),
         business=business,
         role=ROLE_ADMIN,
@@ -99,7 +112,7 @@ def create_business_with_admin(
         db.rollback()
         # The checks above can race with a concurrent onboarding;
         # the database constraints are the final guard.
-        raise OnboardingError(
+        raise OperatorError(
             "The slug or admin email was taken while onboarding; "
             "nothing was created"
         ) from error

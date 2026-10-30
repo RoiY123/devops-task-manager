@@ -7,7 +7,7 @@ from app.backend.models import Business, User
 
 
 def test_user_without_business_is_rejected(db_session: Session) -> None:
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError, match='"business_id" .* violates not-null'):
         with db_session.begin_nested():
             db_session.add(
                 User(
@@ -32,16 +32,17 @@ def test_business_with_users_cannot_be_deleted(db_session: Session) -> None:
     db_session.flush()
 
     # A savepoint lets the expected failure roll back without ending the test's outer transaction.
-    with pytest.raises(IntegrityError):
+    # Matching the name proves the RESTRICT foreign key refused, not another rule.
+    with pytest.raises(IntegrityError, match="fk_users_business_id_businesses"):
         with db_session.begin_nested():
             db_session.delete(business)
 
 
-def test_duplicate_slug_is_rejected(db_session: Session) -> None:
+def test_database_rejects_duplicate_slug(db_session: Session) -> None:
     db_session.add(Business(name="Acme", slug="acme"))
     db_session.flush()
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError, match="uq_businesses_slug"):
         with db_session.begin_nested():
             db_session.add(Business(name="Acme Copy", slug="acme"))
 
@@ -59,7 +60,7 @@ def test_duplicate_slug_is_rejected(db_session: Session) -> None:
     ],
 )
 def test_invalid_slug_is_rejected(db_session: Session, slug: str) -> None:
-    with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError, match="ck_businesses_slug_format"):
         with db_session.begin_nested():
             db_session.add(Business(name="Cohen", slug=slug))
 

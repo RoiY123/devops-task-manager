@@ -306,6 +306,8 @@ Serve multiple independent businesses from one application and database. Every u
 
 Businesses and their first administrators are created by the operator with a command run over SSM; there is no public registration. Users who existed before tenancy were kept in a `legacy` business.
 
+The operator manages users in every business (add, reset password, change role, remove) only through the same CLI over SSM, never through web endpoints, so these powers stay behind AWS access. Commands that take a password or confirm a deletion refuse to run without an interactive terminal. A business that has users must keep at least one admin.
+
 Status:
 Accepted
 

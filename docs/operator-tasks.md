@@ -97,11 +97,13 @@ Then one command:
 unset ADMIN_PASSWORD
 ```
 
-## Businesses
+## Businesses and users
+
+There is no public endpoint for any of these tasks. Input is checked before any prompt, so on `Error: ...` nothing was changed; correct the input and run it again.
 
 ### Onboard a business
 
-Creates a business and its first administrator. There is no public endpoint for this.
+Creates a business and its first administrator.
 
 Application instance; one command. It prompts twice for the administrator password; type or paste only the password at each prompt:
 
@@ -118,29 +120,64 @@ docker compose --env-file .env.prod -f compose.prod.yml \
 - Password: at least 12 characters; the prompt does not display it.
 - Do not add `-T`: without an interactive terminal the command refuses to run.
 
-Expected: `Created business 'BUSINESS_SLUG' (id …) with administrator ADMIN_EMAIL (user id …).` On `Error: ...` nothing was created; correct the input and run it again.
+Expected: `Created business 'BUSINESS_SLUG' (id …) with administrator ADMIN_EMAIL (user id …).`
 
 Send the password through a secure channel, separately from the login URL and email.
 
 ### List businesses and their users
 
-Read-only. Application instance; one command, from the first line to `EOF`:
+Read-only. Application instance; one command. Remove `--business BUSINESS_SLUG` to list every business:
 
 ```bash
-docker compose --env-file .env.prod -f compose.prod.yml exec -T api python - <<'EOF'
-from sqlalchemy import text
-from app.backend.database import SessionLocal
-
-with SessionLocal() as s:
-    rows = s.execute(text(
-        "SELECT b.slug, b.name, u.id, u.email, u.role "
-        "FROM businesses b LEFT JOIN users u ON u.business_id = b.id "
-        "ORDER BY b.slug, u.id"
-    ))
-    for row in rows:
-        print(row)
-EOF
+docker compose --env-file .env.prod -f compose.prod.yml \
+  exec -T api python -m app.backend.cli list-users --business BUSINESS_SLUG
 ```
+
+Each line shows the business slug, its name, and one user's id, email and role, or `no users`.
+
+### Manage users
+
+The commands below name both the business and the email; a user in another business is not found. Type emails in lowercase: login matches the email exactly as it was created.
+
+Each command prompts or must run interactively, so do not add `-T`.
+
+**Add a user.** Application instance; one command. It prompts twice for the new user's password (at least 12 characters). Use `--role admin` for an administrator:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yml \
+  exec api python -m app.backend.cli add-user \
+  --business BUSINESS_SLUG --email USER_EMAIL --role member
+```
+
+An email already used in any business is refused.
+
+**Reset a password.** Application instance; one command. It prompts twice for the new password:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yml \
+  exec api python -m app.backend.cli reset-password \
+  --business BUSINESS_SLUG --email USER_EMAIL
+```
+
+Logins made before the reset stay valid until their tokens expire (`ACCESS_TOKEN_EXPIRE_MINUTES`). To cut off access immediately, remove the user instead.
+
+**Promote or demote.** Application instance; one command. Use `--role admin` or `--role member`:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yml \
+  exec api python -m app.backend.cli set-role \
+  --business BUSINESS_SLUG --email USER_EMAIL --role admin
+```
+
+**Remove a user.** Permanently deletes the user and all their tasks; their existing logins stop working immediately. Application instance; one command. It shows how many tasks will be deleted, then asks you to type the email again:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yml \
+  exec api python -m app.backend.cli remove-user \
+  --business BUSINESS_SLUG --email USER_EMAIL
+```
+
+A business that has users must keep an admin: removing or demoting its only admin is refused while other users remain. Promote another user first. Removing the last user of a business is allowed.
 
 One line per user, as (slug, name, user id, email, role). A business without users shows `None` for the user fields. Terminals may display Hebrew names right-to-left reversed; the stored text is not affected.
 
