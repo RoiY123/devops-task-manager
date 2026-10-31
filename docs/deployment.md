@@ -337,6 +337,7 @@ Manual verification can also include:
 - monitoring interfaces reachable through SSM port forwarding
 - Prometheus scraping FastAPI and Node Exporter from the current production application instance, with both targets reporting `UP`
 - `database_connection_up` reporting `1`
+- after Nginx configuration changes or instance replacement, `https://api.roiy.dev/metrics` returning `404`
 - the managed certificate-renewal schedule installed and cron active
 - after a normal deployment, `alembic current` matching the intended revision in the deployed image
 
