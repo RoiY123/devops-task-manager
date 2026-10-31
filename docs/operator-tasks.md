@@ -58,7 +58,9 @@ Expected after a normal deployment: the newest revision in `alembic/versions/`, 
 
 ## Health and login smoke test
 
-Local Git Bash; one command:
+Run every command in this section in **local Git Bash on your PC**, not in an SSM session: they test the public HTTPS endpoint from outside, and the login check needs the repository's local Python environment.
+
+One command:
 
 ```bash
 curl -s https://api.roiy.dev/health
@@ -66,15 +68,7 @@ curl -s https://api.roiy.dev/health
 
 Expected: `{"status":"healthy"}`.
 
-To check that metrics are not public, one command:
-
-```bash
-curl -s -o /dev/null -w "%{http_code}\n" https://api.roiy.dev/metrics
-```
-
-Expected: `404`. Prometheus scrapes the API directly on port 8000, so this does not affect monitoring.
-
-To check that an account can log in, from the repository folder. This line prompts for the password; run it alone:
+To check that an account can log in, from the local repository folder. This line prompts for the password; run it alone:
 
 ```bash
 read -rsp "Password: " ADMIN_PASSWORD; echo
@@ -89,7 +83,8 @@ ADMIN_EMAIL='ADMIN_EMAIL' ADMIN_PASSWORD="$ADMIN_PASSWORD" .venv/Scripts/python 
 
 Expected: `200`.<br>
 `401` means the email or password is wrong.<br>
-`429` means too many recent attempts from your IP; wait a minute and retry.
+`429` means too many recent attempts from your IP; wait a minute and retry.<br>
+`422` with `.venv/Scripts/python: No such file or directory` means the command ran outside the local repository folder, so no credentials were sent.
 
 Then one command:
 
