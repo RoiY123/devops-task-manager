@@ -56,13 +56,19 @@ def test_add_user_creates_member_who_can_log_in(
     assert login_status(client, "avi@example.com", PASSWORD) == 200
 
 
+# What the left arrow key inserts at the CLI's prompts: ESC [ D.
+ARROW_LEFT = chr(27) + "[D"
+
+
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
         ({"business_slug": "no-such-business"}, "No business"),
         ({"email": "not-an-email"}, "is invalid"),
+        ({"email": f"avi{ARROW_LEFT}@example.com"}, "Email contains control characters"),
         ({"role": "owner"}, "Role 'owner' is invalid"),
         ({"password": "short"}, "at least 12 characters"),
+        ({"password": f"{PASSWORD}{ARROW_LEFT}"}, "Password contains control characters"),
     ],
 )
 def test_add_user_rejects_invalid_input_and_saves_nothing(

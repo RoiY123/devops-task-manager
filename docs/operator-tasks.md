@@ -94,7 +94,20 @@ unset ADMIN_PASSWORD
 
 ## Businesses and users
 
-There is no public endpoint for any of these tasks. Input is checked before any prompt, so on `Error: ...` nothing was changed; correct the input and run it again.
+There is no public endpoint for any of these tasks. Input is checked before any prompt, so on `Error: ...` nothing was changed; correct the input and run it again. Ctrl+C at any prompt cancels without saving.
+
+Hebrew can be typed and corrected with Backspace at any prompt (menu answers, passwords, confirmations): the CLI switches the session's terminal to UTF-8 line editing while it runs. Arrow keys do not move the cursor at these prompts: they insert characters shown as `^[[D`, which Backspace removes. At password prompts nothing is shown, so a password containing them is refused with `contains control characters`. If you ever see `could not be read`, part of a character was lost on the way in; retype the answer without corrections, or paste it.
+
+### Operator menu
+
+Every task in this section is also available from an interactive menu, which asks for each value instead of requiring a filled-in command. Application instance; one command. Do not add `-T`:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yml \
+  exec api python -m app.backend.cli menu
+```
+
+Choose a number and answer the questions. A blank answer cancels the current action without changes; after each action or error the menu returns. `0` or Ctrl+C exits. The menu runs the same checks, password prompts and confirmations as the commands below.
 
 ### Onboard a business
 
@@ -111,7 +124,7 @@ docker compose --env-file .env.prod -f compose.prod.yml \
 ```
 
 - `--name`: display name; Hebrew is supported.
-- `--slug`: part of the business login URL. Lowercase letters, digits and single hyphens, at most 63 characters. Slugs cannot be renamed yet.
+- `--slug`: part of the business login URL. Lowercase letters, digits and single hyphens, at most 63 characters. Choose it carefully: slugs cannot be renamed. Before a business goes live, an empty business can be deleted and onboarded again.
 - Password: at least 12 characters; the prompt does not display it.
 - Do not add `-T`: without an interactive terminal the command refuses to run.
 
@@ -128,7 +141,7 @@ docker compose --env-file .env.prod -f compose.prod.yml \
   exec -T api python -m app.backend.cli list-users --business BUSINESS_SLUG
 ```
 
-Each line shows the business slug, its name, and one user's id, email and role, or `no users`.
+Each line shows the business slug, its name, and one user's id, email and role, or `no users`. Terminals may display Hebrew names right-to-left reversed; the stored text is not affected.
 
 ### Manage users
 
@@ -174,7 +187,26 @@ docker compose --env-file .env.prod -f compose.prod.yml \
 
 A business that has users must keep an admin: removing or demoting its only admin is refused while other users remain. Promote another user first. Removing the last user of a business is allowed.
 
-One line per user, as (slug, name, user id, email, role). A business without users shows `None` for the user fields. Terminals may display Hebrew names right-to-left reversed; the stored text is not affected.
+### Manage businesses
+
+**Rename a business.** Changes the display name only; the slug, users and logins are unaffected. Application instance; one command:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yml \
+  exec -T api python -m app.backend.cli rename-business \
+  --slug BUSINESS_SLUG --name "NEW_DISPLAY_NAME"
+```
+
+Expected: `Renamed business 'BUSINESS_SLUG' from '…' to '…'.` To undo, rename it back.
+
+**Delete an empty business.** Permanently deletes a business that has no users; a business with users is refused, so remove its users first. Application instance; one command. Do not add `-T`: it asks you to type the slug again:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yml \
+  exec api python -m app.backend.cli delete-business --slug BUSINESS_SLUG
+```
+
+Expected: `Deleted business 'BUSINESS_SLUG'.`
 
 ## Certificates: verify renewal
 

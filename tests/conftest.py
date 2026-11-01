@@ -6,10 +6,19 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.backend import cli
 from app.backend.database import get_db
 from app.backend.main import app
 from app.backend.models import ROLE_MEMBER, Business, User
 from app.backend.security import hash_password
+
+
+@pytest.fixture(autouse=True)
+def no_real_terminal_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    # termios exists on Linux (CI) but not on Windows. Disabling it by default
+    # makes tests behave the same everywhere and keeps them from changing the
+    # real terminal's settings; line-editing tests install their own fake.
+    monkeypatch.setattr(cli, "termios", None)
 
 
 TEST_DATABASE_URL = os.getenv(
