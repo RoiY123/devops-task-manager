@@ -61,6 +61,8 @@ def test_onboarding_creates_business_and_admin_who_can_log_in(
     [
         ({"name": "   "}, "must not be empty"),
         ({"name": "א" * 201}, "at most 200 characters"),
+        # The left arrow key's ESC [ D, as typed at a CLI prompt.
+        ({"name": "כהן" + chr(27) + "[D"}, "control characters"),
         ({"slug": "Cohen Plumbing"}, "is invalid"),
         ({"slug": "כהן"}, "is invalid"),
         ({"slug": "a" * 64}, "is invalid"),

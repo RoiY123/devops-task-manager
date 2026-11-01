@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.backend import cli
 from app.backend.cli import main
 from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, Task, User
 
@@ -309,6 +310,333 @@ def test_refused_removal_is_reported_before_asking_for_confirmation(
 
     assert exit_code == 1
     assert "only admin" in capsys.readouterr().err
+
+
+# What Backspace on a Hebrew letter leaves behind: half of the letter's UTF-8 bytes.
+LEFTOVER_BYTE = chr(0xDCD7)
+
+
+def test_unreadable_argument_is_rejected_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    test_business: Business,
+) -> None:
+    business_id = test_business.id
+
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        ["rename-business", "--slug", "test-business", "--name", f"שם{LEFTOVER_BYTE}"],
+        [],
+        interactive=False,
+    )
+
+    assert exit_code == 1
+    assert "could not be read" in capsys.readouterr().err
+    assert db_session.get(Business, business_id).name == "עסק בדיקות"
+
+
+def test_unreadable_password_is_rejected_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    test_business: Business,
+) -> None:
+    # The real getpass decodes strictly: a leftover byte raises while reading
+    # instead of being returned, which is what this stand-in reproduces.
+    def leftover_byte(prompt: str) -> str:
+        raise UnicodeDecodeError("utf-8", b"\xd7", 0, 1, "invalid continuation byte")
+
+    monkeypatch.setattr(sys, "stdin", FakeStdin(True))
+    monkeypatch.setattr(getpass, "getpass", leftover_byte)
+    db_session.commit()
+
+    exit_code = main(
+        user_args("add-user", "avi@example.com", "--role", "member"),
+        session_factory=lambda: db_session,
+    )
+
+    assert exit_code == 1
+    assert "could not be read" in capsys.readouterr().err
+    assert db_session.scalar(
+        select(User).where(User.email == "avi@example.com")
+    ) is None
+
+
+def test_unreadable_confirmation_is_reported_as_unreadable(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    avi_id = user_factory("avi@example.com").id
+
+    # The right email after a Backspace on a Hebrew letter: not a mismatch.
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        user_args("remove-user", "avi@example.com"),
+        [],
+        confirmations=[f"{LEFTOVER_BYTE}avi@example.com"],
+    )
+
+    assert exit_code == 1
+    assert "could not be read" in capsys.readouterr().err
+    assert db_session.get(User, avi_id) is not None
+
+
+def test_ctrl_c_at_a_prompt_cancels_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    test_business: Business,
+) -> None:
+    def interrupt(prompt: str) -> str:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(sys, "stdin", FakeStdin(True))
+    monkeypatch.setattr(getpass, "getpass", interrupt)
+    db_session.commit()
+
+    exit_code = main(
+        user_args("add-user", "avi@example.com", "--role", "member"),
+        session_factory=lambda: db_session,
+    )
+
+    assert exit_code == 130
+    assert "Cancelled; nothing was saved." in capsys.readouterr().err
+    assert db_session.scalar(
+        select(User).where(User.email == "avi@example.com")
+    ) is None
+
+
+class FakeTermiosWithoutName:
+    """Records terminal-setting changes; stands in for termios on any OS.
+
+    Like Python 3.12's termios, it does not export the IUTF8 name.
+    """
+
+    TCSANOW = 0
+    error = OSError
+
+    def __init__(self) -> None:
+        self.current = [0x0100, 0, 0, 0, 0, 0, []]
+        self.history: list[int] = []
+
+    def tcgetattr(self, fd: int) -> list:
+        return list(self.current)
+
+    def tcsetattr(self, fd: int, when: int, attributes: list) -> None:
+        self.current = list(attributes)
+        self.history.append(attributes[0])
+
+
+class FakeTermios(FakeTermiosWithoutName):
+    """A termios that exports IUTF8, as newer Python versions may."""
+
+    IUTF8 = 0x4000
+
+
+class FakeTerminal(FakeStdin):
+    def fileno(self) -> int:
+        return 0
+
+
+@pytest.fixture
+def fake_termios(monkeypatch: pytest.MonkeyPatch) -> FakeTermios:
+    fake = FakeTermios()
+    monkeypatch.setattr(cli, "termios", fake)
+    return fake
+
+
+@pytest.mark.parametrize(
+    ("platform", "expected_history"),
+    [
+        # The container: Linux with Python 3.12, so the fallback value is used.
+        ("linux", [0x0100 | cli.LINUX_IUTF8, 0x0100]),
+        # Elsewhere the Linux value may be wrong, so nothing is changed.
+        ("darwin", []),
+    ],
+)
+def test_utf8_line_editing_falls_back_to_the_linux_value(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Session,
+    test_business: Business,
+    platform: str,
+    expected_history: list[int],
+) -> None:
+    fake = FakeTermiosWithoutName()
+    monkeypatch.setattr(cli, "termios", fake)
+    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.setattr(sys, "stdin", FakeTerminal(True))
+
+    main(["list-users"], session_factory=lambda: db_session)
+
+    assert fake.history == expected_history
+
+
+def test_utf8_line_editing_is_on_during_a_command_and_restored_after(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Session,
+    fake_termios: FakeTermios,
+    test_business: Business,
+) -> None:
+    seen_during_command = []
+    monkeypatch.setattr(sys, "stdin", FakeTerminal(True))
+    monkeypatch.setattr(
+        getpass,
+        "getpass",
+        lambda prompt: seen_during_command.append(fake_termios.current[0]) or PASSWORD,
+    )
+    db_session.commit()
+
+    exit_code = main(
+        user_args("add-user", "avi@example.com", "--role", "member"),
+        session_factory=lambda: db_session,
+    )
+
+    assert exit_code == 0
+    # On while the password was typed, and the original flags afterwards.
+    assert all(flags & FakeTermios.IUTF8 for flags in seen_during_command)
+    assert fake_termios.current[0] == 0x0100
+
+
+def test_utf8_line_editing_is_restored_after_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Session,
+    fake_termios: FakeTermios,
+) -> None:
+    monkeypatch.setattr(sys, "stdin", FakeTerminal(True))
+
+    exit_code = main(
+        ["rename-business", "--slug", "no-such", "--name", "x"],
+        session_factory=lambda: db_session,
+    )
+
+    assert exit_code == 1
+    assert fake_termios.history == [0x0100 | FakeTermios.IUTF8, 0x0100]
+
+
+def test_utf8_line_editing_is_not_touched_without_a_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Session,
+    fake_termios: FakeTermios,
+    test_business: Business,
+) -> None:
+    monkeypatch.setattr(sys, "stdin", FakeTerminal(False))
+
+    main(["list-users"], session_factory=lambda: db_session)
+
+    assert fake_termios.history == []
+
+
+def add_empty_business(db: Session) -> int:
+    business = Business(name="עסק ריק", slug="empty-business")
+    db.add(business)
+    db.flush()
+    return business.id
+
+
+def test_rename_business_needs_no_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    test_business: Business,
+) -> None:
+    business_id = test_business.id
+
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        ["rename-business", "--slug", "test-business", "--name", "שם חדש"],
+        [],
+        interactive=False,
+    )
+
+    assert exit_code == 0
+    assert "from 'עסק בדיקות' to 'שם חדש'" in capsys.readouterr().out
+    renamed = db_session.get(Business, business_id)
+    assert (renamed.slug, renamed.name) == ("test-business", "שם חדש")
+
+
+def test_delete_business_after_typed_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+) -> None:
+    business_id = add_empty_business(db_session)
+
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        ["delete-business", "--slug", "empty-business"],
+        [],
+        confirmations=["empty-business"],
+    )
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "permanently deletes business 'empty-business' (עסק ריק)" in output
+    assert "Deleted business 'empty-business'." in output
+    assert db_session.get(Business, business_id) is None
+
+
+def test_delete_business_with_wrong_confirmation_deletes_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+) -> None:
+    business_id = add_empty_business(db_session)
+
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        ["delete-business", "--slug", "empty-business"],
+        [],
+        confirmations=["empty-busines"],
+    )
+
+    assert exit_code == 1
+    assert "nothing was deleted" in capsys.readouterr().err
+    assert db_session.get(Business, business_id) is not None
+
+
+def test_business_with_users_is_refused_before_asking_for_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com")
+
+    # No scripted confirmation: asking for one would fail the test.
+    exit_code = run_cli(
+        monkeypatch, db_session, ["delete-business", "--slug", "test-business"], []
+    )
+
+    assert exit_code == 1
+    assert "has 1 users; remove them first" in capsys.readouterr().err
+
+
+def test_delete_business_refuses_without_interactive_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+) -> None:
+    business_id = add_empty_business(db_session)
+
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        ["delete-business", "--slug", "empty-business"],
+        [],
+        interactive=False,
+    )
+
+    assert exit_code == 1
+    assert "interactively" in capsys.readouterr().err
+    assert db_session.get(Business, business_id) is not None
 
 
 def test_remove_user_refuses_without_interactive_terminal(

@@ -1,5 +1,3 @@
-import re
-import unicodedata
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -12,16 +10,9 @@ from app.backend.accounts import (
     clean_email,
     ensure_email_is_free,
 )
+from app.backend.businesses import clean_business_name, clean_slug
 from app.backend.models import ROLE_ADMIN, Business, User
 from app.backend.security import hash_password
-
-
-# Same rule as the ck_businesses_slug_format database constraint,
-# checked here first so the operator gets a readable message.
-SLUG_PATTERN = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
-
-MAX_NAME_LENGTH = 200
-MAX_SLUG_LENGTH = 63
 
 
 @dataclass(frozen=True)
@@ -39,13 +30,6 @@ class OnboardedBusiness:
     admin_email: str
 
 
-def normalize_name(name: str) -> str:
-    # Identical-looking Hebrew can arrive as different Unicode sequences
-    # (for example, nikud marks typed in a different order);
-    # NFC stores it one canonical way so duplicate checks and searches match.
-    return unicodedata.normalize("NFC", name).strip()
-
-
 def validate_new_business(
     db: Session,
     *,
@@ -54,23 +38,8 @@ def validate_new_business(
     admin_email: str,
 ) -> NewBusiness:
     """Check everything except the password, so the CLI can fail before prompting."""
-    name = normalize_name(name)
-    slug = slug.strip()
-
-    if not name:
-        raise OperatorError("Business name must not be empty")
-
-    if len(name) > MAX_NAME_LENGTH:
-        raise OperatorError(
-            f"Business name must be at most {MAX_NAME_LENGTH} characters"
-        )
-
-    if len(slug) > MAX_SLUG_LENGTH or not SLUG_PATTERN.fullmatch(slug):
-        raise OperatorError(
-            f"Slug {slug!r} is invalid: use lowercase letters, digits and "
-            f"single hyphens, at most {MAX_SLUG_LENGTH} characters"
-        )
-
+    name = clean_business_name(name)
+    slug = clean_slug(slug)
     admin_email = clean_email(admin_email)
 
     if db.scalar(select(Business.id).where(Business.slug == slug)) is not None:

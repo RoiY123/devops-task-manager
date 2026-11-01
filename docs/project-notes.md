@@ -308,7 +308,7 @@ Serve multiple independent businesses from one application and database. Every u
 
 Businesses and their first administrators are created by the operator with a command run over SSM; there is no public registration. Users who existed before tenancy were kept in a `legacy` business.
 
-The operator manages users in every business (add, reset password, change role, remove) only through the same CLI over SSM, never through web endpoints, so these powers stay behind AWS access. Commands that take a password or confirm a deletion refuse to run without an interactive terminal. A business that has users must keep at least one admin.
+The operator manages users in every business (add, reset password, change role, remove) and businesses themselves (rename the display name, delete when empty) only through the same CLI over SSM, never through web endpoints, so these powers stay behind AWS access. An interactive menu in the same CLI offers the same actions; it adds no access path. Commands that take a password or confirm a deletion refuse to run without an interactive terminal. A business that has users must keep at least one admin.
 
 Status:
 Accepted
@@ -337,7 +337,7 @@ Give each business its own login URL using a path segment on the frontend (for e
 The API receives the slug explicitly and looks up the user by business and lower-cased email, because the same email may exist in different businesses.<br>
 An unknown slug and incorrect credentials return the same generic `401` response. The JWT continues to carry only the user's ID (`sub`); the business is resolved from the database.
 
-Open points: the exact API shape (`POST /businesses/{slug}/login` or a `business_slug` body field) and whether slugs can be renamed.
+Open points: the exact API shape (`POST /businesses/{slug}/login` or a `business_slug` body field) and whether slugs can be renamed. Until this is decided, slugs cannot be renamed: a renamed slug would break shared login URLs, and a released slug could later lead old links to another business's login page.
 
 Status:
 Proposed

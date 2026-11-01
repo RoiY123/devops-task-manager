@@ -1,4 +1,5 @@
 """Account rules and the operator's user-management actions."""
+import unicodedata
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
@@ -18,8 +19,22 @@ class OperatorError(ValueError):
     """Rejected operator input. The message is safe to show the operator."""
 
 
+def reject_control_characters(text: str, label: str) -> None:
+    # At the CLI's prompts, arrow keys insert escape sequences (ESC [ D) instead
+    # of moving the cursor. Visible prompts show them as ^[[D, but at a password
+    # prompt they go in unseen and would make the password impossible to type
+    # on a website; pasted text can also bring tabs. Direction marks used in
+    # Hebrew text are a different category (Cf) and stay allowed.
+    if any(unicodedata.category(character) == "Cc" for character in text):
+        raise OperatorError(
+            f"{label} contains control characters (for example, from arrow keys); "
+            f"retype it without using arrow keys"
+        )
+
+
 def clean_email(email: str) -> str:
     email = email.strip()
+    reject_control_characters(email, "Email")
 
     if "@" not in email or len(email) > MAX_EMAIL_LENGTH:
         raise OperatorError(f"Email {email!r} is invalid")
@@ -28,6 +43,8 @@ def clean_email(email: str) -> str:
 
 
 def check_password(password: str) -> None:
+    reject_control_characters(password, "Password")
+
     if len(password) < MIN_PASSWORD_LENGTH:
         raise OperatorError(
             f"Password must be at least {MIN_PASSWORD_LENGTH} characters"
