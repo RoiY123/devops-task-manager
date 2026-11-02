@@ -105,12 +105,13 @@ Completed:
 - Migration tests against populated disposable PostgreSQL databases in CI
 - Operator user management over SSM: add users, reset passwords, change roles, and remove users in any business
 - Full migration-chain test (upgrade, downgrade to base, upgrade) in CI
+- Operator business management over SSM: rename business display names, delete empty businesses, and an interactive operator menu
 
 Current milestone:
-- Multi-business support: tenancy foundation, operator onboarding, closed public registration, and operator user management implemented and verified in production
+- Multi-business support: tenancy foundation, operator onboarding, closed public registration, operator user management, and business management implemented and verified in production
 
 Next milestone:
-- Business management: delete empty businesses, rename business display names, and an interactive operator menu
+- TBD
 
 ---
 

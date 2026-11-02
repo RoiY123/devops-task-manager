@@ -109,6 +109,7 @@ The application deployment checks out these runtime paths:
 - `cron/task-manager-certificates`
 - `scripts/renew-certificates.sh`
 - `scripts/ensure-certificates.sh`
+- `scripts/operator.sh`, the operator CLI wrapper described in [operator-tasks.md](operator-tasks.md#businesses-and-users)
 
 A retained Nginx container is reloaded to read current configuration and refresh API hostname resolution.<br>
 A recreated container loads these at startup.
