@@ -41,7 +41,8 @@ git sparse-checkout set \
   '/docker/nginx-bootstrap/' \
   '/cron/task-manager-certificates' \
   '/scripts/renew-certificates.sh' \
-  '/scripts/ensure-certificates.sh'
+  '/scripts/ensure-certificates.sh' \
+  '/scripts/operator.sh'
 
 # Check out the exact commit that triggered the deployment.
 git checkout "$COMMIT_SHA"
@@ -84,6 +85,10 @@ rsync -a \
 install -o ubuntu -g ubuntu -m 0755 \
   "$STAGING_DIR/scripts/renew-certificates.sh" \
   "$PROJECT_DIR/scripts/renew-certificates.sh"
+
+install -o ubuntu -g ubuntu -m 0755 \
+  "$STAGING_DIR/scripts/operator.sh" \
+  "$PROJECT_DIR/scripts/operator.sh"
 
 # Install certificate bootstrap files
 install -o ubuntu -g ubuntu -m 0644 \
