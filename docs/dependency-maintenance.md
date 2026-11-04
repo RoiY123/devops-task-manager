@@ -187,7 +187,7 @@ python -m piptools sync requirements.txt
 
 pip-tools should be upgraded deliberately only when needed, rather than as part of normal application dependency maintenance.
 
-The Python runtime itself is more important for reproducibility. CI and the production Docker image therefore use the same pinned Python version: `Python 3.12.14`
+The Python runtime itself is more important for reproducibility. CI and the production Docker image therefore use the same pinned Python version: `Python 3.12.16`
 
 ---
 
