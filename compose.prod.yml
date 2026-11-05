@@ -15,7 +15,7 @@ services:
       - "8000:8000"
 
   nginx:
-    image: nginx:1.31.6-alpine3.24
+    image: nginx:1.31.8-alpine3.24
     restart: unless-stopped
     depends_on:
       - api
@@ -28,7 +28,7 @@ services:
       - certbot_certs:/etc/letsencrypt:ro
 
   certbot:
-    image: certbot/certbot:v5.8.0
+    image: certbot/certbot:v5.9.0
     volumes:
       - certbot_webroot:/var/www/certbot
       - certbot_certs:/etc/letsencrypt

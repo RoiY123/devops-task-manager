@@ -267,7 +267,7 @@ Generated runtime configuration:
 
 The runtime file is generated automatically during deployment from Parameter Store values and contains private SMTP credentials, so it must never be committed to Git.
 
-Alertmanager v0.33.1 runs as UID/GID `65534`, so the generated file is installed with ownership `65534:65534` and mode `0600`.
+The Alertmanager image runs as UID/GID `65534`, so the generated file is installed with ownership `65534:65534` and mode `0600`.
 
 Alertmanager receives alerts from two sources:
 
