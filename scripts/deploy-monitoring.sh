@@ -137,10 +137,11 @@ fi
 docker run --rm \
   --entrypoint /bin/amtool \
   -v "$TMP_DIR/alertmanager.yml:/tmp/alertmanager.yml:ro" \
-  prom/alertmanager:v0.33.1 \
+  prom/alertmanager:v0.34.2 \
   check-config /tmp/alertmanager.yml
 
-# Alertmanager v0.33.1 runs as UID/GID 65534 (nobody).
+# The Alertmanager image runs as UID/GID 65534 (nobody);
+# recheck this after image upgrades.
 install -o 65534 -g 65534 -m 0600 \
   "$TMP_DIR/alertmanager.yml" \
   "$PROJECT_DIR/runtime/alertmanager/alertmanager.yml"
