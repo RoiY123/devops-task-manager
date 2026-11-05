@@ -1,6 +1,6 @@
 services:
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.1
     restart: unless-stopped
 
     ports:
@@ -14,7 +14,7 @@ services:
       - prometheus-data:/prometheus
 
   grafana:
-    image: grafana/grafana:13.2.2
+    image: grafana/grafana:13.3.0
     restart: unless-stopped
 
     ports:
@@ -33,7 +33,7 @@ services:
       - prometheus
 
   alertmanager:
-    image: prom/alertmanager:v0.33.1
+    image: prom/alertmanager:v0.34.2
     restart: unless-stopped
 
     ports:
