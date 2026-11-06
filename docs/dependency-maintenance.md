@@ -104,7 +104,7 @@ These are the required checks. CI already installs the updated dependencies, run
 
 | Pull request | Expected files | Before merging | After deployment |
 | --- | --- | --- | --- |
-| Python packages | `requirements.in`, `requirements.txt` | CI green; release notes of FastAPI, Pydantic, SQLAlchemy, Alembic, Psycopg, PyJWT, Uvicorn | Health; login smoke test if FastAPI, Pydantic, or PyJWT changed; sync `.venv` |
+| Python packages | `requirements.in`, `requirements.txt` | CI green; release notes of FastAPI, Starlette, Pydantic, SQLAlchemy, Alembic, Psycopg, PyJWT, Uvicorn | Health; login smoke test if FastAPI, Starlette, Pydantic, or PyJWT changed; sync `.venv` |
 | Python base image | `docker/Dockerfile` | CI green | Health |
 | Compose: Nginx, Certbot, PostgreSQL | `compose.prod.yml`, `compose.yml` | CI green; release notes (security) | Health; Certbot dry run if Certbot changed |
 | Compose: monitoring | `compose-monitoring.prod.yml`, `compose.yml` | CI green; release notes | Grafana dashboards show recent data; Prometheus targets `UP` |
@@ -201,19 +201,24 @@ Refresh an indirect package only when there is a reason: a security alert, a war
 
 `requirements.txt` must be generated on Linux. On Windows, pip-compile writes Windows-only packages such as `tzdata` into the shared file.
 
-On a new branch from `main`, local Git Bash; one command, replacing the package name and using the Python version from `docker/Dockerfile`:
+On a new branch from `main`, local Git Bash; one command, replacing the package name and using the Python version from `docker/Dockerfile`. Repeat `--upgrade-package <package>` for each package to refresh:
 
 ```bash
 MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/work" -w /work \
+  -e CUSTOM_COMPILE_COMMAND="pip-compile requirements.in" \
   python:<python-version>-slim-bookworm \
   sh -c "pip install --quiet pip-tools==7.6.1 && pip-compile --upgrade-package <package> requirements.in"
 ```
 
-Check that only the expected lines changed:
+`CUSTOM_COMPILE_COMMAND` keeps the header of `requirements.txt` as `pip-compile requirements.in`. Without it, pip-compile records `--no-index` there, a command Dependabot should not repeat.
+
+Check that only the expected package lines changed and the header did not:
 
 ```bash
 git diff requirements.txt
 ```
+
+Before opening the pull request, check the packages that depend on the refreshed one: a refresh can surface a new warning from them. Refresh those too when their release notes show no risk for our usage.
 
 Then open a pull request and follow the normal checklist.
 
