@@ -507,7 +507,7 @@ Decision:
 
 Pin dependency and container-image versions and review updates through Dependabot and the procedure in `docs/dependency-maintenance.md`.
 
-Manage Python dependency inputs and compiled requirements with pip-tools. Check shared dependency versions across development, CI, and production when reviewing updates.
+Manage Python dependency inputs and compiled requirements with pip-tools. Keep each pinned version in one file that Dependabot updates; CI and deployment read shared versions from those files instead of repeating them.
 
 Use scheduled GHCR cleanup and application-host image cleanup to control unused image accumulation.
 

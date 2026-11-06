@@ -1,1173 +1,289 @@
 # Dependency Maintenance Runbook
 
-This document defines how dependencies are reviewed, tested, updated, and merged for the Task Manager project.
+How to review and merge dependency updates for the Task Manager project.
 
-The goal is to keep dependencies current without automatically introducing changes into production.
+Dependabot opens update pull requests; it does not decide whether they are safe. Every update is reviewed and merged by hand, one at a time, because every merge to `main` deploys to production.
 
-Dependency updates are intentionally reviewed before merging. Dependabot identifies available updates and opens pull requests, but it does not decide whether an update is safe for this project.
-
----
-
-## 1. Dependency Management Strategy
-
-The project uses several dependency ecosystems:
-
-- Python application dependencies
-- Docker base images
-- Docker Compose service images
-- GitHub Actions
-- Terraform providers
-
-Routine dependency updates are checked monthly by Dependabot.
-
-Security updates are handled separately through:
-
-- GitHub Dependency Graph
-- Dependabot Alerts
-- Dependabot Security Updates
-
-Security fixes may therefore appear outside the normal monthly schedule.
-
-Automatic merging is not enabled.
-
-Every dependency pull request must be reviewed before merging.
+A normal monthly round should take about an hour of hands-on work, plus waiting for CI and deployments. Sections 1–3 are the routine; the rest is only needed when something is unusual.
 
 ---
 
-## 2. Update Policy
+## 1. Policy
 
-### Routine updates
+- **Schedule.** Dependabot checks monthly and opens grouped pull requests for Python packages, the Python base image, Compose images, GitHub Actions, and the Terraform AWS provider (`.github/dependabot.yml`).
+- **Security first.** Security pull requests can appear at any time. Handle them before routine ones (section 4).
+- **Routine means minor and patch.** The Python base image is limited to patch updates; the other ecosystems to minor and patch. Major upgrades (for example Python 3.12 → 3.13, PostgreSQL 17 → 18, AWS provider 6 → 7) are planned as dedicated work, not merged from a routine pull request.
+- **One version, one place.** Each pinned version lives in exactly one file that Dependabot updates:
 
-Routine dependency checks run monthly.
+  | Version | Single source | Also used by (read automatically) |
+  | --- | --- | --- |
+  | Python | `docker/Dockerfile` | CI's `setup-python` |
+  | PostgreSQL (local and CI) | `compose.yml` | CI's test database |
+  | Alertmanager | `compose-monitoring.prod.yml` | the deployment's config check (`amtool`) |
+  | Python packages | `requirements.in` → `requirements.txt` | Docker image, CI |
+  | AWS provider | `terraform/.terraform.lock.hcl` | `terraform init` |
 
-Minor and patch updates may be grouped to reduce pull request and CI noise.
-
-Examples:
-
-```text
-FastAPI 0.139.x → 0.141.x
-Grafana 13.1.x → 13.2.x
-AWS provider 6.57.x → 6.66.x
-```
-
-These still require review and testing.
-
-A minor or patch version number does not guarantee that an update is risk-free.
+  Do not write version numbers into documentation or comments; they go stale. If an update ever needs a version edited somewhere else, treat that as a defect and remove the duplication.
+- **Never auto-merge.** A green CI run is necessary, but release notes, Terraform plans, and production checks may reveal what tests do not.
 
 ---
 
-### Major and runtime upgrades
+## 2. Monthly Checklist
 
-Major platform/runtime upgrades should be handled as dedicated maintenance work rather than routine Dependabot upgrades.
+Before starting, local `main` should be clean and up to date.
 
-Examples:
-
-```text
-Python 3.12 → 3.13 or 3.14
-PostgreSQL 17 → 18
-Terraform AWS provider 6.x → 7.x
-```
-
-These may require migration planning, compatibility review, additional testing, or infrastructure changes.
-
----
-
-### Security updates
-
-Security updates take priority over the normal monthly schedule.
-
-When Dependabot opens a security update:
-
-1. Review the vulnerability and affected package.
-2. Review the proposed patched version.
-3. Test the update using the relevant procedure in this document.
-4. Merge promptly if testing succeeds.
-5. Investigate alternatives if the patched version cannot be adopted.
-
-A security alert may exist without an automatic pull request if Dependabot cannot determine a safe compatible upgrade.
-
----
-
-## 3. Python Dependency Model
-
-Python dependencies use `pip-tools`.
-
-The project contains:
-
-```text
-requirements.in
-requirements.txt
-```
-
-### `requirements.in`
-
-This file contains direct application dependencies maintained by the project.
-
-Example:
-
-```text
-fastapi==...
-sqlalchemy==...
-psycopg[binary]==...
-pytest==...
-```
-
-This is the file humans primarily maintain.
-
-### `requirements.txt`
-
-This file is generated from `requirements.in`.
-
-It contains:
-
-- direct dependencies
-- transitive dependencies
-- exact resolved versions
-
-Do not manually maintain the dependency tree in this file.
-
----
-
-## 4. Python Dependency Commands
-
-When deliberately changing Python dependencies manually, edit:
-
-```text
-requirements.in
-```
-
-Then regenerate the lock-style dependency file:
-
-```bash
-python -m piptools compile requirements.in
-```
-
-Synchronize the local virtual environment:
-
-```bash
-python -m piptools sync requirements.txt
-```
-
-Verify that the installed dependency graph is valid:
-
-```bash
-python -m pip check
-```
-
-Run the application test suite:
-
-```bash
-python -m pytest -v
-```
-
-DO NOT use:
-
-```bash
-pip freeze > requirements.txt
-```
-
-`pip freeze` records whatever happens to be installed in the current environment and does not preserve the direct-vs-transitive dependency model used by this project.
-
-### Python Tooling Note
-
-`pip` and `pip-tools` are development/build tooling rather than application dependencies.
-
-They are not maintained through `requirements.in` and do not have a routine upgrade schedule.
-
-The project uses the `pip` version provided by each Python environment unless there is a concrete reason to change it, such as a security issue, compatibility problem, or Python runtime upgrade.
-
-CI does not automatically upgrade `pip` on every run.
-
-`pip-tools` is used locally to generate and synchronize the dependency files:
-
-```bash
-python -m piptools compile requirements.in
-python -m piptools sync requirements.txt
-```
-
-pip-tools should be upgraded deliberately only when needed, rather than as part of normal application dependency maintenance.
-
-The Python runtime itself is more important for reproducibility. CI and the production Docker image therefore use the same pinned Python version: `Python 3.12.16`
-
----
-
-## 5. Dependabot Pull Request Review Workflow
-
-Every Dependabot PR should be reviewed in approximately this order:
-
-```text
-1. Identify what is changing
-2. Review the version jumps
-3. Inspect the changed files
-4. Read relevant release notes
-5. Check CI
-6. Check out the PR locally
-7. Run ecosystem-specific tests
-8. Investigate any failures
-9. Merge only after the update is understood
-10. Verify production where appropriate
-11. Sync local main
-12. Remove temporary local branches
-```
-
-A green CI result alone is not sufficient evidence that every dependency update is appropriate.
-
----
-
-## 6. Understanding Dependabot PR Branches
-
-Dependabot creates its own remote branch.
-
-Example:
-
-```text
-dependabot/pip/python-routine-...
-```
-
-The PR normally targets:
-
-```text
-main
-```
-
-The Dependabot branch contains the proposed dependency changes before they are merged.
-
-This allows the changes to be tested locally without modifying `main`.
-
----
-
-## 7. Checking Out a Dependabot PR Locally
-
-Before changing branches, verify that the working tree is clean:
-
-```bash
-git status
-```
-
-Fetch the latest remote branches:
-
-```bash
-git fetch origin
-```
-
-List Dependabot branches:
-
-```bash
-git branch -r | grep dependabot
-```
-
-Create a temporary local branch from the relevant Dependabot branch:
-
-```bash
-git switch -c test-dependabot-<type> origin/<dependabot-branch>
-```
-
-Examples:
-
-```text
-test-dependabot-python
-test-dependabot-compose
-test-dependabot-terraform
-```
-
-Confirm the active branch:
-
-```bash
-git branch --show-current
-```
-
-The local temporary branch is only for testing.
-
-`main` remains unchanged until the PR is merged.
-
----
-
-## 8. Python Dependabot PR Testing
-
-For Python dependency PRs, first synchronize the virtual environment with the PR:
-
-```bash
-python -m piptools sync requirements.txt
-```
-
-Verify dependency compatibility:
-
-```bash
-python -m pip check
-```
-
-Expected result:
-
-```text
-No broken requirements found.
-```
-
-Run tests:
-
-```bash
-python -m pytest -v
-```
-
-Then verify that the production-style application image can still be built from scratch:
-
-```bash
-docker compose build --no-cache app
-```
-
-Start the local stack:
-
-```bash
-docker compose up -d
-```
-
-Run database migrations:
-
-```bash
-docker compose exec app alembic upgrade head
-```
-
-Verify the API:
-
-```bash
-curl http://localhost:8000/health
-```
-
-All of these should succeed before merging a normal Python dependency PR.
-
----
-
-## 9. Reviewing Python Release Notes
-
-Focus review attention on dependencies that directly affect application behavior.
-
-Examples:
-
-```text
-FastAPI
-Pydantic
-SQLAlchemy
-Alembic
-Psycopg
-Uvicorn
-authentication/security libraries
-```
-
-Patch-level utility dependency changes usually require less investigation unless their release notes mention:
-
-- breaking behavior
-- deprecations
-- security issues
-- API changes
-- compatibility changes
-
-Do not assume that a SemVer-looking "minor" update is automatically low risk.
-
-Some projects, especially packages below version `1.0`, may introduce significant changes in minor releases.
-
----
-
-## 10. What to Do When Python Tests Fail
-
-Do not merge the PR.
-
-First determine whether the failure is:
-
-```text
-transient/environmental
-or
-caused by the dependency update
-```
-
-If it looks transient, rerun the failing test once.
-
-If it is reproducible:
-
-1. Read the first meaningful error.
-2. Identify which updated package is likely involved.
-3. Review that package's release notes.
-4. Determine whether the project must be updated for the new behavior.
-
-For grouped PRs, multiple packages may have changed at once.
-
-If necessary, isolate the problem by testing smaller groups or individual dependencies manually.
-
-Possible outcomes:
-
-```text
-Update is compatible after a code/config change
-→ make the compatibility change
-→ retest
-→ merge
-
-Update is not appropriate yet
-→ defer or close the update
-→ optionally add an explicit Dependabot rule if necessary
-```
-
-The existing `main` branch remains on the known-good versions until the PR is merged.
-
----
-
-## 11. Docker and Docker Compose Dependency PRs
-
-Container dependency updates require runtime-oriented testing.
-
-Examples include:
-
-```text
-Nginx
-Prometheus
-Grafana
-PostgreSQL
-Python base image
-Node Exporter
-Alertmanager
-```
-
-Check the PR's Files Changed tab first.
-
-Expected changes should normally be limited to image tags in files such as:
-
-```text
-compose.yml
-compose.prod.yml
-docker/Dockerfile
-monitoring compose files
-```
-
-Unexpected source-code or infrastructure changes should be investigated.
-
----
-
-## 12. Docker Compose Validation
-
-Validate the local Compose configuration:
-
-```bash
-docker compose -f compose.yml config --quiet
-```
-
-Validate production Compose configuration:
-
-```bash
-docker compose --env-file .env.prod.example -f compose.prod.yml config --quiet
-```
-
-These commands parse and validate the Compose configuration.
-
-They do not deploy production.
-
----
-
-## 13. Testing Updated Compose Images Locally
-
-Pull updated local services:
-
-```bash
-docker compose pull
-```
-
-If only specific services changed, pull only those services:
-
-```bash
-docker compose pull prometheus grafana
-```
-
-Recreate specific services if needed:
-
-```bash
-docker compose up -d --force-recreate prometheus grafana
-```
-
-Check service status:
-
-```bash
-docker compose ps
-```
-
-Check logs:
-
-```bash
-docker compose logs prometheus
-docker compose logs grafana
-```
-
-Look for:
-
-- configuration parsing errors
-- fatal startup errors
-- container restart loops
-- dependency connection failures
-
-Warnings are not automatically failures; determine whether they affect the project.
-
----
-
-## 14. Local Monitoring vs Production Monitoring
-
-The local environment does not fully reproduce the production monitoring topology.
-
-Local Compose includes services such as:
-
-```text
-app
-postgres
-prometheus
-grafana
-```
-
-Production monitoring runs on a separate monitoring EC2 instance.
-
-Production also includes targets that may not exist locally, such as Node Exporter.
-
-Therefore, during local testing it may be normal to see:
-
-```text
-missing Node Exporter target
-missing infrastructure metrics
-dashboard panels with no data
-different target names
-```
-
-Do not interpret those differences as evidence that a Prometheus or Grafana upgrade is broken.
-
-The local acceptance criteria are instead:
-
-```text
-Prometheus starts
-Grafana starts
-Prometheus UI loads
-Grafana UI loads
-local application metrics can be scraped
-Grafana can query Prometheus
-no fatal startup/configuration errors exist
-```
-
----
-
-## 15. Port Conflicts During Local Testing
-
-Do not start multiple copies of the same local Compose stack using the same host ports.
-
-Common ports include:
-
-```text
-5432 PostgreSQL
-8000 application
-9090 Prometheus
-3000 Grafana
-```
-
-Starting a second Compose stack while another is already running can produce:
-
-```text
-port is already allocated
-```
-
-When testing a dependency PR, prefer recreating the existing affected containers rather than running a second duplicate stack.
-
----
-
-## 16. Production-Only Images
-
-Some production services are not part of the normal local Compose environment.
-
-For example, Nginx is defined in:
-
-```text
-compose.prod.yml
-```
-
-and is not normally exercised by the local development stack.
-
-For these dependencies, use several forms of evidence:
-
-```text
-release/security notes
-exact image tag validation
-successful image pull
-Compose configuration validation
-CI success
-production health verification after deployment
-```
-
-A successful local application test does not prove that a production-only reverse proxy image is safe.
-
----
-
-## 17. Release and Security Note Review
-
-Functional testing does not detect every risk.
-
-Before accepting infrastructure-facing dependency updates, review upstream:
-
-- release notes
-- changelog
-- security advisories
-
-This is particularly important for:
-
-```text
-Nginx
-PostgreSQL
-Docker base images
-authentication libraries
-Terraform providers
-GitHub Actions
-```
-
-A dependency may start successfully and still contain a known vulnerability.
-
-The Nginx upgrade reviewed during the initial Dependabot rollout demonstrated this: the proposed image started successfully, but review showed that a newer patched release should be used instead.
-
----
-
-## 18. Correcting a Version Inside a Grouped Dependabot PR
-
-If most updates in a grouped PR are acceptable but one proposed version should be changed, it is not always necessary to close the entire PR.
-
-Check out the Dependabot PR locally.
-
-Modify only the required version.
-
-Example:
-
-```yaml
-image: nginx:<desired-version>
-```
-
-Validate the exact image exists:
-
-```bash
-docker pull nginx:<desired-version>
-```
-
-Validate the Compose configuration again:
-
-```bash
-docker compose --env-file .env.prod.example -f compose.prod.yml config --quiet
-```
-
-Inspect the change:
-
-```bash
-git diff
-```
-
-Commit the manual correction on the temporary PR branch:
-
-```bash
-git add <changed-file>
-git commit -m "fix: use patched Nginx image"
-```
-
-Because the local temporary branch name differs from the Dependabot remote branch name, a plain:
-
-```bash
-git push
-```
-
-may fail under Git's default `simple` push mode.
-
-Push explicitly to the remote Dependabot branch:
-
-```bash
-git push origin HEAD:<dependabot-remote-branch>
-```
-
-Example:
-
-```bash
-git push origin HEAD:dependabot/docker_compose/compose-routine-...
-```
-
-This updates the existing PR and triggers new PR checks.
-
-Do not use:
-
-```text
-@dependabot recreate
-```
-
-after manually modifying a Dependabot PR unless intentionally regenerating the PR, because Dependabot may overwrite the manual changes.
-
----
-
-## 19. Terraform Provider Dependency PRs
-
-Terraform provider updates require a different validation process.
-
-A Dependabot Terraform PR may only modify:
-
-```text
-terraform/.terraform.lock.hcl
-```
-
-The file records:
-
-- exact provider version
-- provider package checksums
-
-Large checksum changes are normal when the provider version changes.
-
-GitHub may hide the lock-file diff because it considers the file generated.
-
-Use the **Load Diff** button if necessary.
-
-There is normally no value in manually reviewing every provider checksum.
-
----
-
-## 20. Terraform Provider Validation
-
-Check out the Terraform Dependabot PR locally.
-
-Move into the Terraform directory:
-
-```bash
-cd terraform
-```
-
-Initialize Terraform:
-
-```bash
-terraform init
-```
-
-This installs the provider version selected by the PR lock file.
-
-Validate the configuration:
-
-```bash
-terraform validate
-```
-
-Then create a plan:
-
-```bash
-terraform plan
-```
-
-The ideal result for a provider-only maintenance update is:
-
-```text
-No changes. Your infrastructure matches the configuration.
-```
-
-This demonstrates that:
-
-```text
-the new provider loads successfully
-the Terraform configuration remains valid
-Terraform state can be read
-real AWS resources can be refreshed
-the provider does not propose unexpected infrastructure changes
-```
-
----
-
-## 21. Terraform Plan Review Rules
-
-Never automatically accept unexpected infrastructure changes from a provider update.
-
-If Terraform proposes:
-
-```text
-resource replacement
-resource deletion
-security group change
-network change
-RDS change
-IAM change
-EC2 replacement
-```
-
-stop and investigate before merging.
-
-This project has previously observed a misleading EC2 public-IP difference when the monitoring EC2 instance was stopped.
-
-If a provider upgrade appears to propose replacement of the monitoring instance because of public-IP behavior:
-
-1. Do not apply.
-2. Start the monitoring instance if appropriate.
-3. Refresh/re-run the plan.
-4. Determine whether the difference is real or only caused by the stopped-instance state.
-
----
-
-## 22. Do Not Run Terraform Apply for a Provider Review
-
-A routine provider PR is being tested, not deployed.
-
-If:
-
-```bash
-terraform plan
-```
-
-returns:
-
-```text
-No changes. Your infrastructure matches the configuration.
-```
-
-there is no reason to run:
-
-```bash
-terraform apply
-```
-
-Merging the lock-file update does not itself modify AWS infrastructure.
-
-AWS resources only change when Terraform is deliberately applied.
-
----
-
-## 23. GitHub Actions Dependency Updates
-
-GitHub Actions updates should be reviewed similarly to other CI infrastructure.
-
-Check:
-
-- action name
-- old and new major/minor version
-- upstream release notes
-- breaking changes
-- required permission changes
-- runtime changes
-
-Major GitHub Action upgrades should be reviewed individually.
-
-The project does not auto-merge GitHub Action updates.
-
-After an Action update, verify that the relevant workflow completes successfully.
-
----
-
-## 24. CI Behavior for Pull Requests
-
-The workflow intentionally runs:
-
-```yaml
-on:
-  push:
-    branches:
-      - main
-    tags:
-      - "v*.*.*"
-  pull_request:
-    branches:
-      - main
-```
-
-For `pull_request`, the branch filter refers to the PR's **target/base branch**.
-
-Therefore a Dependabot PR works like this:
-
-```text
-Dependabot source branch
-dependabot/...
-
-          ↓ PR
-
-main
-```
-
-The PR triggers CI because its target is `main`.
-
-A push directly to the Dependabot branch does not trigger a second redundant workflow.
-
----
-
-## 25. CI and Deployment Behavior
-
-The intended workflow is:
-
-```text
-feature/Dependabot branch push
-→ no standalone push workflow
-
-PR targeting main
-→ CI validation
-
-merge into main
-→ push workflow
-→ tests
-→ image build/push
-→ production deployment
-→ production health check
-```
-
-Production deployment is additionally protected by the workflow condition:
-
-```yaml
-if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-```
-
-PR validation therefore does not deploy production.
-
----
-
-## 26. Pull Request Checks
-
-Before merging, check the PR's GitHub Actions/Checks section.
-
-A green check means the automated workflow succeeded for that PR.
-
-It does not necessarily prove every runtime or infrastructure behavior.
-
-CI is one source of evidence alongside:
-
-```text
-diff review
-release-note review
-local tests
-ecosystem-specific checks
-production smoke tests
-```
-
----
-
-## 27. Merge Strategy
-
-Routine Dependabot PRs should normally use:
-
-```text
-Squash and merge
-```
-
-This creates one logical commit on `main` for one dependency maintenance PR.
-
-Example commit subjects:
-
-```text
-chore(deps): bump the python-routine group with 10 updates
-
-chore(deps): update Compose service images
-
-chore(deps): bump hashicorp/aws
-```
-
-The extended Dependabot description may be retained as the commit body.
-
-This preserves useful information about version changes without creating unnecessary merge commits.
-
----
-
-## 28. Production Verification After Merge
-
-Merging into `main` triggers the production CI/CD workflow.
-
-After the workflow succeeds, perform checks appropriate to the update.
-
-For application or Nginx changes:
-
-```text
-https://api.roiy.dev/health
-```
-
-should respond successfully.
-
-For monitoring updates:
-
-- connect to Grafana through the normal SSM tunnel
-- verify dashboards load
-- verify recent data exists
-- verify Prometheus datasource connectivity
-- verify expected Prometheus targets are healthy
-
-A successful deployment workflow plus a successful production smoke test completes the update.
-
----
-
-## 29. Sync Local Main After Merge
-
-After merging a PR on GitHub:
+Local Git Bash, from the repository folder; one line at a time:
 
 ```bash
 git switch main
-```
-
-Update local `main`:
-
-```bash
 git pull origin main
-```
-
-For Python dependency updates, also synchronize the virtual environment:
-
-```bash
-python -m piptools sync requirements.txt
-```
-
-Then verify:
-
-```bash
-python -m pip check
-```
-
-Check Git state:
-
-```bash
 git status
+```
+
+List the open Dependabot pull requests on GitHub (**Pull requests** tab). Handle security pull requests first, then the others in any order. Finish each pull request, including its deployment and checks, before starting the next.
+
+For each pull request:
+
+1. **Make sure it is current.** A pull request opened days ago may be behind `main` or offer outdated versions. Local Git Bash; one line at a time, replacing the branch name (shown under the pull request title):
+
+   ```bash
+   git fetch origin
+   git rev-list --count origin/<dependabot-branch>..origin/main
+   ```
+
+   `0` means the branch contains everything on `main`. Anything else, or a pull request older than a few days, comment on the pull request:
+
+   ```text
+   @dependabot recreate
+   ```
+
+   Dependabot acknowledges with a 👍 reaction, rebuilds the branch on today's `main` with today's newest versions, and CI runs again. If no 👍 appears within about ten minutes, see **Dependabot does not react** in section 5.
+
+2. **Review the changed files.** In the **Files changed** tab, only the expected dependency files should change (section 3). Note each old and new version. If the title and the files disagree, trust the files: titles are not always refreshed by `recreate`.
+
+3. **Read the release notes** for each changed item, looking only for *breaking changes*, *security fixes*, and *behavior changes*. If a breaking change is listed, search our code for the affected feature before deciding it matters. Where to look is listed in section 7.
+
+4. **Check CI.** In the pull request's **Checks**, `versions`, `test`, and `build-and-push` must pass. `deploy` is skipped for pull requests by design; any other skipped job means an earlier job failed.
+
+5. **Run the checks before merging** for the ecosystem (section 3). Only Terraform needs local commands.
+
+6. **Merge** with **Squash and merge**. Keep Dependabot's description. If the title shows the wrong version, correct it in the merge dialog.
+
+7. **Wait for the workflow on `main`** to finish successfully (**Actions** tab). It tests, builds, deploys, and checks HTTPS health.
+
+8. **Run the checks after the deployment** for the ecosystem (section 3).
+
+9. **Sync locally.** Local Git Bash; one line at a time:
+
+   ```bash
+   git switch main
+   git pull origin main
+   ```
+
+   After a Python package update, also synchronize the local virtual environment:
+
+   ```bash
+   .venv/Scripts/python -m pip install -r requirements.txt
+   .venv/Scripts/python -m pip check
+   ```
+
+   Expected: `No broken requirements found.` Do not use `piptools sync` on Windows (section 7).
+
+10. **Clean up** a local test branch if you created one, then prune deleted remote branches:
+
+    ```bash
+    git branch -D <test-branch>
+    git fetch --prune
+    ```
+
+---
+
+## 3. Checks per Ecosystem
+
+These are the required checks. CI already installs the updated dependencies, runs every test on Linux, builds the application image, and validates the production and monitoring Compose files. Deployment validates the Nginx and Alertmanager configuration before switching and stops on failure.
+
+| Pull request | Expected files | Before merging | After deployment |
+| --- | --- | --- | --- |
+| Python packages | `requirements.in`, `requirements.txt` | CI green; release notes of FastAPI, Pydantic, SQLAlchemy, Alembic, Psycopg, PyJWT, Uvicorn | Health; login smoke test if FastAPI, Pydantic, or PyJWT changed; sync `.venv` |
+| Python base image | `docker/Dockerfile` | CI green | Health |
+| Compose: Nginx, Certbot, PostgreSQL | `compose.prod.yml`, `compose.yml` | CI green; release notes (security) | Health; Certbot dry run if Certbot changed |
+| Compose: monitoring | `compose-monitoring.prod.yml`, `compose.yml` | CI green; release notes | Grafana dashboards show recent data; Prometheus targets `UP` |
+| Terraform provider | `terraform/.terraform.lock.hcl` | `terraform plan` shows no changes (below) | None |
+| GitHub Actions | `.github/workflows/*.yml` | CI green | None |
+
+The production checks are in [operator-tasks.md](operator-tasks.md):
+
+- Health and login: [Health and login smoke test](operator-tasks.md#health-and-login-smoke-test)
+- Certbot dry run: [Certificates: verify renewal](operator-tasks.md#certificates-verify-renewal)
+- Grafana and Prometheus: [Monitoring](operator-tasks.md#monitoring-open-grafana-prometheus-or-alertmanager)
+
+### Terraform provider plan
+
+CI does not run Terraform, so the plan is the test. It reads AWS state and changes nothing.
+
+Local Git Bash, from the repository folder; one line at a time:
+
+```bash
+git fetch origin
+git switch -c test-dependabot-terraform origin/<dependabot-branch>
+cd terraform
+terraform init
+terraform validate
+terraform plan
+cd ..
 ```
 
 Expected:
 
-```text
-On branch main
-Your branch is up to date with 'origin/main'
-nothing to commit, working tree clean
-```
+- `terraform init` installs the provider version from the pull request's lock file.
+- `terraform validate`: `Success! The configuration is valid.`
+- `terraform plan`: `No changes. Your infrastructure matches the configuration.`
+
+Do not run `terraform apply`. Merging the lock file changes nothing in AWS. Any other plan result: see section 5.
 
 ---
 
-## 30. Remove Temporary Test Branches
+## 4. Security Pull Requests
 
-After the PR has been merged and local `main` is synchronized, delete the temporary local test branch.
+A security pull request says it resolves a Dependabot alert. Alerts are listed under the repository's **Security and quality** → **Dependabot alerts**.
 
-Examples:
+1. Read the alert: affected package, vulnerable versions, patched version, and what the vulnerability needs to be exploitable (platform, feature, input).
+2. Decide how exposed we are; this sets the urgency, not whether to patch. Patch even with low exposure unless the patched version is incompatible.
+3. Follow the normal checklist (section 2) without waiting for the monthly round.
+4. After merging, confirm the alert moved to **Closed**. This can take a few minutes.
 
-```bash
-git branch -D test-dependabot-python
-```
-
-```bash
-git branch -D test-dependabot-compose
-```
-
-```bash
-git branch -D test-dependabot-terraform
-```
-
-These commands delete only the local temporary branches.
-
-They do not modify the merged PR or `main`.
+An alert without a pull request means Dependabot found no compatible fix. Investigate the dependency chain; the fix may need a manual update (section 6) or an upgrade of the package that depends on it.
 
 ---
 
-## 31. Clean Stale Remote-Tracking Branches
+## 5. When Something Goes Wrong
 
-Dependabot remote branches may still appear in:
+Do not merge a pull request until the problem is understood. `main` stays on the known-good versions meanwhile.
 
-```bash
-git branch -a
-```
+**CI fails.** Read the first meaningful error. Re-run once if it looks transient (network, runner). If it is caused by the update, read that package's release notes and decide:
 
-even after the PR is merged.
+- make a compatibility change on the pull request branch (below), test, then merge; or
+- defer the update: close the pull request, and if it would keep returning, add an `ignore` rule to `.github/dependabot.yml`.
 
-Refresh and prune stale remote references:
-
-```bash
-git fetch --prune
-```
-
-Then check:
+**One update in a group is unsafe.** Change only that version on the pull request branch instead of closing the whole group. Local Git Bash; one line at a time:
 
 ```bash
-git branch -a
+git fetch origin
+git switch -c test-dependabot-fix origin/<dependabot-branch>
 ```
 
-If the remote Dependabot branch no longer exists, its stale local remote-tracking reference will be removed.
+Edit the version, then:
 
-If it still appears, GitHub still has the branch and it can safely be left alone.
+```bash
+git diff
+git add <changed-file>
+git commit -m "fix: use <package> <version>"
+git push origin HEAD:<dependabot-branch>
+```
+
+A plain `git push` fails because the local branch name differs. After this, Dependabot no longer manages the branch: do not comment `@dependabot recreate` or `rebase`, which would discard your commit. Python packages are changed in `requirements.in`, then `requirements.txt` is regenerated on Linux (section 6).
+
+**A test run shows a new warning.** A warning is not a failure, but find its source before merging. A deprecation warning from a package we do not import directly (for example a pytest plugin of an indirect dependency) is not a blocker; handle it with section 6.
+
+**`terraform plan` shows changes.** Do not apply. Stop and investigate any replacement, deletion, security group, network, RDS, IAM, or EC2 change. A stopped monitoring instance has previously caused a misleading public-IP difference: start it, plan again, and check whether the difference is real.
+
+**Dependabot does not react to a comment.** Without a 👍 reaction, the command was not picked up. Check [githubstatus.com](https://www.githubstatus.com) for a Dependabot incident. Otherwise, start a fresh run: **Insights** → **Dependency graph** → **Dependabot** → the ecosystem → **Recent update jobs** → **Check for updates**. It updates the existing pull request. Do not close the pull request to force an update: closing a grouped pull request tells Dependabot those updates are unwanted.
+
+**Production misbehaves after a merge.** Follow [recovery.md](recovery.md).
 
 ---
 
-## 32. Monthly Dependency Maintenance Checklist
+## 6. Refreshing Indirect Python Dependencies
 
-When the monthly Dependabot scan opens PRs:
+Dependabot updates the packages listed in `requirements.in`. Packages they pull in (for example `anyio`, `starlette`) only change when something forces them to.
 
-```text
-Review each PR individually.
+Refresh an indirect package only when there is a reason: a security alert, a warning or failure that points to it, or an update that needs it.
 
-Confirm only expected dependency files changed.
+`requirements.txt` must be generated on Linux. On Windows, pip-compile writes Windows-only packages such as `tzdata` into the shared file.
 
-Review the proposed versions.
+On a new branch from `main`, local Git Bash; one command, replacing the package name and using the Python version from `docker/Dockerfile`:
 
-Read relevant release/security notes.
-
-Check GitHub CI.
-
-Check out the PR locally.
-
-Run ecosystem-specific testing.
-
-Do not merge failed or unexplained updates.
-
-For grouped PRs, investigate any unsafe individual dependency before abandoning the entire group.
-
-Use Squash and merge when the PR is approved.
-
-Wait for the main deployment workflow.
-
-Perform production smoke checks where appropriate.
-
-Pull the merged changes into local main.
-
-Synchronize the Python virtual environment when Python dependencies changed.
-
-Delete temporary local test branches.
-
-Prune stale remote branches if desired.
+```bash
+MSYS_NO_PATHCONV=1 docker run --rm -v "$(pwd -W):/work" -w /work \
+  python:<python-version>-slim-bookworm \
+  sh -c "pip install --quiet pip-tools==7.6.1 && pip-compile --upgrade-package <package> requirements.in"
 ```
+
+Check that only the expected lines changed:
+
+```bash
+git diff requirements.txt
+```
+
+Then open a pull request and follow the normal checklist.
 
 ---
 
-## 33. Security Update Checklist
+## 7. Reference
 
-When a Dependabot security PR appears:
+### Python dependency files
 
-```text
-Read the Dependabot vulnerability information.
+- `requirements.in`: the direct dependencies the project uses. Edited by people.
+- `requirements.txt`: every direct and indirect dependency with an exact version, generated from `requirements.in` by pip-compile. Never edit it by hand and never create it with `pip freeze`.
 
-Confirm which dependency and versions are affected.
+### Windows
 
-Review the patched target version.
+- Psycopg needs the `tzdata` package on Windows only, so the Linux-generated `requirements.txt` does not list it. `piptools sync` removes everything not listed, including `tzdata`. Use `pip install -r requirements.txt`, which installs the listed versions and removes nothing.
+- Never run pip-compile on Windows (section 6).
+- `pip install -r` also installs each package's own platform-specific needs, such as `tzdata` on Windows, so new packages with Windows-only needs work without extra steps.
 
-Check whether the update changes a runtime/platform major version.
+### Adding or removing a direct package
 
-Review upstream security and release notes.
+Part of normal development rather than routine maintenance:
 
-Run the relevant local validation procedure.
+1. Add the package to `requirements.in` with an exact version (`package==x.y.z`), or remove its line.
+2. Regenerate `requirements.txt` on Linux with the section 6 command, using `pip-compile requirements.in` without `--upgrade-package`. Existing versions stay unchanged; only the added package and its own needs are added, or packages nothing needs anymore are removed.
+3. Update the local environment: `.venv/Scripts/python -m pip install -r requirements.txt`. It never uninstalls, so a removed package stays in `.venv` harmlessly; recreate `.venv` if that ever matters.
+4. Commit both files in the feature pull request. Dependabot tracks a new direct package from then on.
 
-Check CI.
+New indirect packages arrive inside Dependabot's pull requests when an updated package starts needing them. Review a new line in `requirements.txt` during step 2 of the checklist: its `# via` comment shows which package requires it.
 
-Merge promptly when testing succeeds.
+### pip and pip-tools
 
-Perform production verification after deployment.
+`pip` is not upgraded as a routine task. Production and CI already get current versions: `pip` comes with each Python base image and with CI's `setup-python`, both kept current through Dependabot. Locally, `pip install -r` needs no particular `pip` version, and pip-compile runs in a disposable Linux container with a pinned pip-tools version, avoiding the `pip` and pip-tools version incompatibilities pip-tools is known for. Upgrade `pip` locally only when something requires it.
+
+### Dependabot behavior
+
+- `@dependabot rebase` moves the same changes onto the current `main`.
+- `@dependabot recreate` rebuilds the pull request from the current `main` with the newest versions. It discards manual commits.
+- Dependabot rebases on its own only when its pull request conflicts with `main`. A pull request that is merely behind stays behind.
+- After someone else pushes to its branch, Dependabot stops updating that pull request.
+- A 👍 reaction confirms a comment command was accepted.
+
+### CI and deployment
+
+- Pull request: reads pinned versions, runs tests, validates Compose files, and builds the image without pushing. No deployment.
+- Merge to `main`: the same, then pushes the image, deploys the application, checks HTTPS health, and deploys monitoring. Pushes that only change `docs/`, `README.md`, or `CLAUDE.md` skip the workflow.
+
+### Where to read release notes
+
+| Dependency | Location |
+| --- | --- |
+| Python | python.org release page for the version |
+| Python packages | the package's GitHub releases or changelog (linked from its PyPI page) |
+| Grafana, Prometheus, Alertmanager | GitHub releases of `grafana/grafana`, `prometheus/prometheus`, `prometheus/alertmanager` |
+| Nginx | [nginx.org/en/CHANGES](https://nginx.org/en/CHANGES) |
+| Certbot | GitHub releases of `certbot/certbot` |
+| AWS provider | `CHANGELOG.md` in `hashicorp/terraform-provider-aws` |
+
+### Running the tests inside the application image
+
+Not part of the routine; useful when CI and local results disagree. Requires the local PostgreSQL (`docker compose up -d postgres`). Local Git Bash; build the image, then run the migrations and tests in it:
+
+```bash
+docker compose build app
 ```
 
-Do not ignore security PRs simply because the normal dependency review is monthly.
-
----
-
-## 34. Dependency Maintenance Principles
-
-The project follows these principles:
-
-**Pinned does not mean frozen forever.**
-
-Versions are pinned for reproducibility, then deliberately upgraded.
-
-**Dependabot is a scout, not an automatic decision-maker.**
-
-It identifies possible upgrades; the project owner decides whether they are appropriate.
-
-**CI passing is necessary but not always sufficient.**
-
-Runtime behavior, security information, Terraform plans, and release notes may reveal issues that tests do not.
-
-**Do not apply infrastructure changes during dependency review unless the infrastructure change itself is intentional.**
-
-Terraform provider review uses `plan`, not automatic `apply`.
-
-**Keep dependency PR noise manageable.**
-
-Routine updates are monthly and grouped where practical.
-
-**Handle large platform changes deliberately.**
-
-Python runtime, PostgreSQL major versions, Terraform major versions, and similar upgrades should be dedicated maintenance tasks.
-
-**Never auto-merge dependency updates into production.**
+```bash
+MSYS_NO_PATHCONV=1 docker compose run --rm --no-deps \
+  -v "$(pwd -W):/work" -w /work \
+  -e TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@postgres:5432/task_manager_test \
+  -e DATABASE_URL=postgresql+psycopg://postgres:postgres@postgres:5432/task_manager_test \
+  -e JWT_SECRET_KEY=local-test-only-key-at-least-32-bytes-long \
+  app sh -c "alembic upgrade head && python -m pytest -q -p no:cacheprovider"
+```
