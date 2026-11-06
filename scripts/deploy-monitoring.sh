@@ -134,11 +134,19 @@ if [[ ! -f "$PROJECT_DIR/runtime/alertmanager/alertmanager.yml" ]] \
 fi
 
 # Validate the generated Alertmanager configuration before installing it.
-docker run --rm \
-  --entrypoint /bin/amtool \
-  -v "$TMP_DIR/alertmanager.yml:/tmp/alertmanager.yml:ro" \
-  prom/alertmanager:v0.34.2 \
-  check-config /tmp/alertmanager.yml
+# Running amtool through the Compose service uses the image the stack will run,
+# so an image update in the Compose file needs no change here.
+(
+  cd "$PROJECT_DIR"
+  docker compose \
+    --env-file .env.monitoring \
+    -f compose-monitoring.prod.yml \
+    run --rm --no-deps -T \
+    --entrypoint /bin/amtool \
+    -v "$TMP_DIR/alertmanager.yml:/tmp/alertmanager.yml:ro" \
+    alertmanager \
+    check-config /tmp/alertmanager.yml
+)
 
 # The Alertmanager image runs as UID/GID 65534 (nobody);
 # recheck this after image upgrades.
