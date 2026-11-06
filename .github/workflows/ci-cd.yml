@@ -22,8 +22,38 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Reads pinned versions from the files Dependabot updates, so CI always tests
+  # on the same Python and PostgreSQL as the images we run.
+  versions:
+    runs-on: ubuntu-26.04
+
+    outputs:
+      python-version: ${{ steps.read.outputs.python-version }}
+      postgres-image: ${{ steps.read.outputs.postgres-image }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Read pinned versions
+        id: read
+        run: |
+          python_version=$(sed -n 's/^FROM python:\([0-9][0-9.]*\)-.*/\1/p' docker/Dockerfile)
+          postgres_image=$(sed -n 's/^[[:space:]]*image:[[:space:]]*\(postgres:[^[:space:]]*\)[[:space:]]*$/\1/p' compose.yml)
+
+          if [[ $(wc -w <<< "$python_version") -ne 1 || $(wc -w <<< "$postgres_image") -ne 1 ]]; then
+            echo "ERROR: Expected one Python version in docker/Dockerfile and one postgres image in compose.yml."
+            echo "Found Python: '$python_version'; PostgreSQL: '$postgres_image'"
+            exit 1
+          fi
+
+          echo "Python $python_version, $postgres_image"
+          echo "python-version=$python_version" >> "$GITHUB_OUTPUT"
+          echo "postgres-image=$postgres_image" >> "$GITHUB_OUTPUT"
+
   test:
     runs-on: ubuntu-26.04
+    needs: versions
 
     env:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/task_manager_test
@@ -33,7 +63,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:17.11
+        image: ${{ needs.versions.outputs.postgres-image }}
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -53,7 +83,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12.16"
+          python-version: ${{ needs.versions.outputs.python-version }}
           cache: pip
         
       - name: Install dependencies
@@ -71,6 +101,9 @@ jobs:
 
       - name: Validate production Compose configuration
         run: docker compose --env-file .env.prod.example -f compose.prod.yml config --quiet
+
+      - name: Validate monitoring Compose configuration
+        run: docker compose --env-file .env.monitoring.example -f compose-monitoring.prod.yml config --quiet
 
   build-and-push:
     runs-on: ubuntu-26.04
