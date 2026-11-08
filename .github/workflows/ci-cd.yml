@@ -96,7 +96,29 @@ jobs:
       - name: Run migration tests
         run: python -m pytest -v tests/migrations
 
+      # The migrations create the application role without a password.
+      # This test-only password lets the application tests connect as that role.
+      - name: Allow the application role to log in
+        run: |
+          python - <<'EOF'
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(
+              "postgresql+psycopg://postgres:postgres@localhost:5432/task_manager_test",
+              isolation_level="AUTOCOMMIT",
+          )
+          with engine.connect() as connection:
+              connection.execute(
+                  text("ALTER ROLE task_manager_app WITH LOGIN PASSWORD 'ci-only-app-password'")
+              )
+          EOF
+
+      # Connecting as the application role proves the application needs no
+      # more than the privileges the migrations grant it.
       - name: Run application tests
+        env:
+          DATABASE_URL: postgresql+psycopg://task_manager_app:ci-only-app-password@localhost:5432/task_manager_test
+          TEST_DATABASE_URL: postgresql+psycopg://task_manager_app:ci-only-app-password@localhost:5432/task_manager_test
         run: python -m pytest -v --ignore=tests/migrations
 
       - name: Validate production Compose configuration
