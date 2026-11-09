@@ -10,14 +10,14 @@ RDS storage is encrypted. Automated backups are retained for seven days. AWS del
 
 Terraform-managed deletion requires a final snapshot. These settings provide recovery safeguards; they do not constitute a tested database restore procedure.
 
-Application connectivity is provided through `DATABASE_URL`, which is generated into `.env.prod` during deployment from AWS Systems Manager Parameter Store.
+The application connects through `DATABASE_URL`, a limited database user (`task_manager_app`) that can read and write rows but not change the schema. Migrations connect through `MIGRATION_DATABASE_URL`, the schema owner. Both come from AWS Systems Manager Parameter Store during deployment; only `DATABASE_URL` is written to `.env.prod`, so the API container never receives the migration credentials.
 
 The database must use `UTF8` encoding because business names and task content may contain Hebrew. Confirm `SHOW server_encoding;` returns `UTF8` on any recreated or restored database before connecting the application.
 
-Production migrations run automatically during deployment using the exact application image being deployed:
+Production migrations run automatically during deployment using the exact application image being deployed, with `MIGRATION_DATABASE_URL` overriding `DATABASE_URL` for that one-off container only:
 
 ```bash
-docker compose \
+DATABASE_URL="$MIGRATION_DATABASE_URL" docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
   run --rm api \

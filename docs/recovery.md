@@ -106,7 +106,7 @@ If a downgrade is approved:
 
 1. Confirm the required migration image and compatible target application image are available before starting downtime.
 2. Stop the API and any other writers before removing schema elements they may use.
-3. Execute the reviewed downgrade with an image containing the current revision and the complete downgrade path.
+3. Execute the reviewed downgrade with an image containing the current revision and the complete downgrade path, connected through `MIGRATION_DATABASE_URL`: the application's `DATABASE_URL` cannot change the schema.
 4. Verify the resulting revision and required data. If the operation fails, establish the actual database state before starting any application image.
 5. Start the compatible application, refresh Nginx resolution, and verify service behavior.
 
