@@ -113,6 +113,15 @@ DATABASE_URL="$(aws ssm get-parameter \
   --query "Parameter.Value" \
   --output text)"
 
+# Migrations change the schema, so they connect as its owner.
+# This URL is passed only to the migration run and never written to .env.prod.
+MIGRATION_DATABASE_URL="$(aws ssm get-parameter \
+  --region il-central-1 \
+  --name "/task-manager/prod/app/MIGRATION_DATABASE_URL" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text)"
+
 JWT_SECRET_KEY="$(aws ssm get-parameter \
   --region il-central-1 \
   --name "/task-manager/prod/app/JWT_SECRET_KEY" \
@@ -242,11 +251,14 @@ IMAGE_TAG="$IMAGE_TAG" docker compose \
 # Run database migrations
 echo "Running database migrations..."
 
-IMAGE_TAG="$IMAGE_TAG" docker compose \
+# A shell value overrides .env.prod for this one-off container only.
+DATABASE_URL="$MIGRATION_DATABASE_URL" IMAGE_TAG="$IMAGE_TAG" docker compose \
   --env-file .env.prod \
   -f compose.prod.yml \
   run --rm api \
   alembic upgrade head
+
+unset MIGRATION_DATABASE_URL
 
 echo "Database migrations completed successfully."
 
