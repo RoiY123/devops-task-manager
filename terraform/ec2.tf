@@ -10,9 +10,10 @@ resource "aws_instance" "app" {
   ]
 
   metadata_options {
-    http_endpoint               = "enabled"
-    http_tokens                 = "required"
-    http_put_response_hop_limit = 2
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+    # 1 keeps instance credentials away from containers; no app container needs AWS.
+    http_put_response_hop_limit = 1
   }
 
   monitoring              = false
@@ -67,8 +68,9 @@ resource "aws_instance" "monitoring" {
   ]
 
   metadata_options {
-    http_endpoint               = "enabled"
-    http_tokens                 = "required"
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+    # 2 lets Grafana, inside a container, use the instance role for CloudWatch.
     http_put_response_hop_limit = 2
   }
 
