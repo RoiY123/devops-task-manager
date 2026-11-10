@@ -14,10 +14,10 @@ Local requirements: AWS CLI, the Session Manager plugin, and credentials for the
 
 ### Open a session on a server
 
-Local PowerShell, from the repository folder; one command. Use `app` for the application instance or `monitoring` for the monitoring instance:
+Local Git Bash, from the repository folder; one command. Use `app` for the application instance or `monitoring` for the monitoring instance:
 
-```powershell
-./scripts/ssm-shell.ps1 app
+```bash
+./scripts/ssm-shell.sh app
 ```
 
 In the session:
@@ -247,21 +247,10 @@ These interfaces listen only on the monitoring instance itself and are reached t
 | Prometheus | 9090 | http://localhost:9090 |
 | Alertmanager | 9093 | http://localhost:9093 |
 
-Find the monitoring instance ID. Local Git Bash; one command:
+Local Git Bash, from the repository folder; one command. Use `grafana`, `prometheus`, or `alertmanager`:
 
 ```bash
-MONITORING_INSTANCE_ID=$(aws ec2 describe-instances --profile task-manager-terraform --region il-central-1 --filters "Name=tag:Name,Values=task-manager-prod-monitoring" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text); echo "$MONITORING_INSTANCE_ID"
+./scripts/ssm-tunnel.sh grafana
 ```
 
-Expected: an ID starting with `i-`. Then forward Grafana; one command:
-
-```bash
-aws ssm start-session \
-  --profile task-manager-terraform \
-  --region il-central-1 \
-  --target "$MONITORING_INSTANCE_ID" \
-  --document-name AWS-StartPortForwardingSession \
-  --parameters '{"portNumber":["3000"],"localPortNumber":["3000"]}'
-```
-
-For Prometheus or Alertmanager, replace both port numbers using the table. Keep the terminal open while using the service; use a separate terminal for each tunnel and press Ctrl+C to close it.
+Then open the local URL from the table. Keep the terminal open while using the service; use a separate terminal for each tunnel and press Ctrl+C to close it. If the local port is already in use (for example by the local Compose Grafana), add a free port as a second argument, such as `./scripts/ssm-tunnel.sh grafana 13000`, and open that port instead.
