@@ -106,6 +106,8 @@ Completed:
 - Operator user management over SSM: add users, reset passwords, change roles, and remove users in any business
 - Full migration-chain test (upgrade, downgrade to base, upgrade) in CI
 - Operator business management over SSM: rename business display names, delete empty businesses, and an interactive operator menu
+- Least-privilege database user for the application, with migrations under a separate schema-owner URL
+- Container access to instance metadata blocked on the application instance
 
 Current milestone:
 - Multi-business support: tenancy foundation, operator onboarding, closed public registration, operator user management, and business management implemented and verified in production
@@ -487,7 +489,10 @@ Allow public HTTP and HTTPS access to the application host.<br>
 Restrict application and host metrics access to the monitoring security group, and PostgreSQL access to the application security group.<br>
 Block `/metrics` in Nginx, because a security group cannot restrict paths the reverse proxy forwards, and rate-limit `/login` per client IP to slow password guessing.
 
-Require IMDSv2 on both EC2 instances and run the application container as a dedicated non-root user.
+Require IMDSv2 on both EC2 instances and run the application container as a dedicated non-root user.<br>
+Set the application instance's metadata hop limit to 1 so its containers cannot obtain instance credentials; the monitoring instance keeps 2 because Grafana reads CloudWatch through the instance role.
+
+Run the application as a least-privilege database user (`task_manager_app`) that can read and write rows but not change the schema. Run migrations with a separate schema-owner URL (`MIGRATION_DATABASE_URL`), passed only to the migration container.
 
 Use encrypted root storage and no SSH key pair on the production application instance.<br>
 Keep its AMI pinned and review AMI updates as deliberate infrastructure changes.

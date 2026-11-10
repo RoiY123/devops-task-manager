@@ -463,3 +463,40 @@ feat: add businesses and assign users to a business
 feat: add user roles and operator onboarding command
 
 feat!: close public registration and remove legacy business default
+
+## Milestone 18 — Least-privilege database access
+
+Goal:
+
+Limit what a compromised or buggy application can do to the production database, without downtime.
+
+Learned:
+
+- Why the application should not use the database owner, and how a role with only data privileges contains SQL-level damage.
+- How default privileges give tables from future migrations the same grants automatically.
+- Why migrations and the running application need different database credentials, and how to keep the owner's credentials out of the application container.
+- How the IMDS hop limit decides whether containers can obtain the instance role's credentials.
+- How to roll out a credential change in small, separately verified deploys, and how a changed Parameter Store value takes effect only on the next deploy.
+- Why an IAM policy can appear as "known after apply" in a Terraform plan when a resource it references changes.
+
+Built:
+
+- A migration that creates the `task_manager_app` role with data-only privileges and default privileges for future tables.
+- CI that runs the application tests connected as that role.
+- A deployment that runs migrations with a separate `MIGRATION_DATABASE_URL`, passed only to the migration container.
+- An IMDS hop limit of 1 on the application instance.
+
+Verified:
+
+- Production migration `670248a338cd` applied through a normal deployment.
+- The production application connects as `task_manager_app`; creating a table from its container is refused.
+- Login, an operator CLI change, and the database connectivity metric work under the limited user.
+- The application container cannot reach the instance metadata service; deployments from the host still succeed.
+
+Git:
+
+feat: add a least-privilege database role for the application
+
+infra: run migrations with a separate database URL
+
+infra: block container access to instance metadata on the app server
