@@ -56,6 +56,12 @@ docker compose --env-file .env.prod -f compose.prod.yml \
 
 Expected after a normal deployment: the newest revision in `alembic/versions/`, followed by `(head)`. This only reads the revision. After a rollback, use the procedure in [recovery.md](recovery.md#establish-the-current-state) instead.
 
+## Redeploy without a code change
+
+Deploys the current `main` again, for example after changing a Parameter Store value, which only takes effect on the next deployment.
+
+GitHub → **Actions** → **CI/CD** → **Run workflow** → branch `main` → **Run workflow**. It tests, builds, deploys, and checks HTTPS health; then run the [health and login smoke test](#health-and-login-smoke-test). On any other branch it only tests and builds.
+
 ## Health and login smoke test
 
 Run every command in this section in **local Git Bash on your PC**, not in an SSM session: they test the public HTTPS endpoint from outside, and the login check needs the repository's local Python environment.

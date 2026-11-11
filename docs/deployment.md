@@ -61,7 +61,7 @@ Do not edit production configuration directly on EC2. Update the corresponding P
 
 Production deployments are automated through GitHub Actions.
 
-A push to `main` runs CI, builds the application image, and deploys through AWS Systems Manager using OIDC authentication, unless all changed files are under `docs/` or are the root `README.md` or `CLAUDE.md`.
+A merge to `main` runs CI, builds the application image, and deploys through AWS Systems Manager using OIDC authentication, unless all changed files are under `docs/` or are the root `README.md` or `CLAUDE.md`. **Run workflow** on `main` deploys the current `main` the same way without a code change; deployments run one at a time.
 
 Pull requests to `main` still run checks for documentation-only changes.
 A push containing both documentation and other changes runs the normal
@@ -301,7 +301,7 @@ Replacement is a planned maintenance operation. The verified approach is:
 5. Move the production Elastic IP to the candidate and deploy. With empty certificate volumes, HTTP validation must reach the candidate before initial certificates can be issued.
 6. Verify public HTTPS health, running services, and the renewal schedule.
 7. Align Terraform resource tracking, production instance names, and GitHub deployment permissions with the replacement.
-8. Run the normal deployment workflow and verify monitoring uses the new private IP, with application and Node Exporter targets reporting `UP`.
+8. Run the deployment workflow (**Run workflow** on `main`) and verify monitoring uses the new private IP, with application and Node Exporter targets reporting `UP`.
 9. Retire the old instance after verification, explicitly handling its termination protections and reviewing a destruction plan scoped to it.
 10. Confirm production health and a clean Terraform plan, and commit the final infrastructure configuration.
 
