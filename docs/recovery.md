@@ -94,7 +94,7 @@ If Nginx is not running, investigate and restore it separately. Finish with the 
 
 The explicit image selection applies to each command without editing `.env.prod`. Continue using it for any subsequent manual commands intended to use the rollback image. An unqualified Compose command may select the failed deployment's tag still stored in `.env.prod`.
 
-Do not run `alembic upgrade head` with an older image that lacks the database's current revision. Application rollback deliberately leaves the schema unchanged. The next normal deployment regenerates `.env.prod` and applies its selected release, so agree on the next deployment commit before resuming deployments.
+Do not run `alembic upgrade head` with an older image that lacks the database's current revision. Application rollback deliberately leaves the schema unchanged. The next normal deployment regenerates `.env.prod` and applies its selected release, so agree on the next deployment commit before resuming deployments, including manual **Run workflow** deployments.
 
 ## Database downgrade or backup recovery
 
