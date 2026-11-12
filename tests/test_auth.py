@@ -1,75 +1,78 @@
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
+from app.backend import security
+from app.backend.models import Business
+
+
+LOGIN = "/businesses/test-business/login"
+ALICE = {"email": "alice@example.com", "password": "password123"}
+
+
+@pytest.fixture
+def alice(user_factory) -> None:
+    user_factory(ALICE["email"], ALICE["password"])
 
 
 def test_public_registration_is_closed(client: TestClient) -> None:
+    assert client.post("/register", json=ALICE).status_code == 404
+
+
+def test_old_login_endpoint_is_gone(client: TestClient, alice) -> None:
+    assert client.post("/login", json=ALICE).status_code == 404
+
+
+def test_login_in_the_users_business(client: TestClient, alice) -> None:
+    response = client.post(LOGIN, json=ALICE)
+
+    assert response.status_code == 200
+    assert response.json()["token_type"] == "bearer"
+
+
+def test_login_ignores_email_capitals_and_spaces(client: TestClient, alice) -> None:
     response = client.post(
-        "/register",
-        json={
-            "email": "alice@example.com",
-            "password": "password123",
-        },
+        LOGIN, json={**ALICE, "email": "  Alice@Example.COM "}
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 200
 
 
-def test_login_user(client: TestClient, user_factory) -> None:
-    user_factory("alice@example.com", "password123")
-
-    login_response = client.post(
-        "/login",
-        json={
-            "email": "alice@example.com",
-            "password": "password123",
-        },
-    )
-
-    assert login_response.status_code == 200
-
-    data = login_response.json()
-
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
-
-
-def test_login_with_wrong_password_is_rejected(
+def test_every_failed_login_gets_the_same_response(
     client: TestClient,
-    user_factory,
+    db_session: Session,
+    alice,
 ) -> None:
-    user_factory("alice@example.com", "password123")
+    db_session.add(Business(name="עסק אחר", slug="other-business"))
+    db_session.flush()
 
-    response = client.post(
-        "/login",
-        json={
-            "email": "alice@example.com",
-            "password": "wrong-password",
-        },
-    )
+    failures = [
+        client.post(LOGIN, json={**ALICE, "password": "wrong-password"}),
+        client.post(LOGIN, json={**ALICE, "email": "nobody@example.com"}),
+        client.post("/businesses/other-business/login", json=ALICE),
+        client.post("/businesses/no-such-business/login", json=ALICE),
+    ]
 
-    assert response.status_code == 401
+    # Identical answers do not reveal which emails or businesses exist.
+    assert {response.status_code for response in failures} == {401}
+    assert all(response.json() == failures[0].json() for response in failures)
 
 
-def test_unknown_email_gets_the_same_response_as_wrong_password(
+def test_unknown_email_still_checks_a_password(
     client: TestClient,
-    user_factory,
+    monkeypatch: pytest.MonkeyPatch,
+    alice,
 ) -> None:
-    user_factory("alice@example.com", "password123")
+    calls = []
+    real_verify = security.password_hash.verify
 
-    wrong_password = client.post(
-        "/login",
-        json={
-            "email": "alice@example.com",
-            "password": "wrong-password",
-        },
-    )
-    unknown_email = client.post(
-        "/login",
-        json={
-            "email": "nobody@example.com",
-            "password": "password123",
-        },
-    )
+    def counting_verify(*args, **kwargs):
+        calls.append(args)
+        return real_verify(*args, **kwargs)
 
-    # Identical answers do not reveal which emails have accounts.
-    assert unknown_email.status_code == wrong_password.status_code == 401
-    assert unknown_email.json() == wrong_password.json()
+    monkeypatch.setattr(security.password_hash, "verify", counting_verify)
+
+    client.post(LOGIN, json={**ALICE, "email": "nobody@example.com"})
+
+    # The check against the dummy hash makes this as slow as a real failure.
+    assert len(calls) == 1

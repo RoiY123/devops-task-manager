@@ -337,13 +337,13 @@ Decision:
 
 Give each business its own login URL using a path segment on the frontend (for example `/b/{slug}/login`) rather than a subdomain, which would require additional DNS and TLS configuration. The URL supplies the business slug; the user enters only email and password.
 
-The API receives the slug explicitly and looks up the user by business and lower-cased email, because the same email may exist in different businesses.<br>
-An unknown slug and incorrect credentials return the same generic `401` response. The JWT continues to carry only the user's ID (`sub`); the business is resolved from the database.
+The API receives the slug in the path (`POST /businesses/{slug}/login`) and looks up the user by business and lower-cased email, because the same email may exist in different businesses.<br>
+An unknown slug, a user of another business, and incorrect credentials return the same generic `401`, and a login for an unknown email still checks a password so response times do not reveal which accounts exist. The JWT continues to carry only the user's ID (`sub`); the business is resolved from the database.
 
-Open points: the exact API shape (`POST /businesses/{slug}/login` or a `business_slug` body field) and whether slugs can be renamed. Until this is decided, slugs cannot be renamed: a renamed slug would break shared login URLs, and a released slug could later lead old links to another business's login page.
+Slugs are permanent: a renamed slug would break shared login URLs, and a released slug could later lead old links to another business's login page. Before a business goes live, a wrong slug is corrected by deleting the empty business and onboarding it again. Renaming would require redirects and permanently reserved old slugs, built only if a real need appears.
 
 Status:
-Proposed
+Accepted
 
 ---
 
@@ -487,7 +487,7 @@ Keep inbound SSH closed and bind monitoring web interfaces to loopback.
 
 Allow public HTTP and HTTPS access to the application host.<br>
 Restrict application and host metrics access to the monitoring security group, and PostgreSQL access to the application security group.<br>
-Block `/metrics` in Nginx, because a security group cannot restrict paths the reverse proxy forwards, and rate-limit `/login` per client IP to slow password guessing.
+Block `/metrics` in Nginx, because a security group cannot restrict paths the reverse proxy forwards, and rate-limit business login (`/businesses/{slug}/login`) per client IP to slow password guessing.
 
 Require IMDSv2 on both EC2 instances and run the application container as a dedicated non-root user.<br>
 Set the application instance's metadata hop limit to 1 so its containers cannot obtain instance credentials; the monitoring instance keeps 2 because Grafana reads CloudWatch through the instance role.

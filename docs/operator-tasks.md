@@ -80,15 +80,15 @@ To check that an account can log in, from the local repository folder. This line
 read -rsp "Password: " ADMIN_PASSWORD; echo
 ```
 
-Then one command, replacing `ADMIN_EMAIL`:
+Then one command, replacing `ADMIN_EMAIL` and `BUSINESS_SLUG` (the account's business):
 
 ```bash
 ADMIN_EMAIL='ADMIN_EMAIL' ADMIN_PASSWORD="$ADMIN_PASSWORD" .venv/Scripts/python -c 'import json, os; print(json.dumps({"email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]}))' \
-  | curl -s -o /dev/null -w "%{http_code}\n" -H "Content-Type: application/json" --data @- https://api.roiy.dev/login
+  | curl -s -o /dev/null -w "%{http_code}\n" -H "Content-Type: application/json" --data @- https://api.roiy.dev/businesses/BUSINESS_SLUG/login
 ```
 
 Expected: `200`.<br>
-`401` means the email or password is wrong.<br>
+`401` means the email, password, or business slug is wrong.<br>
 `429` means too many recent attempts from your IP; wait a minute and retry.<br>
 `422` with `.venv/Scripts/python: No such file or directory` means the command ran outside the local repository folder, so no credentials were sent.
 

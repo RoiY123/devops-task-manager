@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.backend.database import get_db
-from app.backend.models import Task as TaskModel, User
+from app.backend.models import Business, Task as TaskModel, User
 from app.backend.schemas import Task, TaskCreate, TaskUpdate, UserLogin, Token
-from app.backend.security import create_access_token, verify_password, get_current_user
+from app.backend.security import create_access_token, get_current_user, verify_login_password
 
 
 router = APIRouter()
@@ -130,21 +130,33 @@ def delete_task(
 # Accounts are created by the operator (app/backend/cli.py);
 # there is deliberately no public registration endpoint.
 @router.post(
-    "/login",
+    "/businesses/{slug}/login",
     response_model=Token,
     status_code=status.HTTP_200_OK
 )
 def login_user(
+    slug: str,
     user_data: UserLogin,
     db: Session = Depends(get_db),
 ):
-    user = db.scalar(
-        select(User).where(User.email == user_data.email)
-    )
+    # Only users of the named business match, ignoring capitals;
+    # an unknown business simply matches nobody.
+    users = db.scalars(
+        select(User)
+        .join(User.business)
+        .where(
+            Business.slug == slug,
+            func.lower(User.email) == user_data.email.strip().lower(),
+        )
+    ).all()
 
-    if user is None or not verify_password(
+    # Two matches can only be accounts differing in capitals;
+    # refuse rather than guess which one is meant.
+    user = users[0] if len(users) == 1 else None
+
+    if not verify_login_password(
         user_data.password,
-        user.hashed_password,
+        user.hashed_password if user else None,
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
