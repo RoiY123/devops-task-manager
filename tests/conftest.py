@@ -111,7 +111,7 @@ def auth_headers_factory(client: TestClient, user_factory):
         user_factory(email, password)
 
         login_response = client.post(
-            "/login",
+            "/businesses/test-business/login",
             json={"email": email, "password": password},
         )
         assert login_response.status_code == 200

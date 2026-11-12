@@ -20,7 +20,7 @@ PASSWORD = "correct-horse-battery"
 
 def login_status(client: TestClient, email: str, password: str) -> int:
     return client.post(
-        "/login", json={"email": email, "password": password}
+        "/businesses/test-business/login", json={"email": email, "password": password}
     ).status_code
 
 

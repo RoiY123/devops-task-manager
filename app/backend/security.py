@@ -16,6 +16,10 @@ load_dotenv()
 
 password_hash = PasswordHash.recommended()
 
+# Checked when no user matches, so a failed login takes as long whether or not
+# the account exists and response times do not reveal which emails are registered.
+DUMMY_PASSWORD_HASH = password_hash.hash("not-a-real-password")
+
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(
@@ -32,7 +36,12 @@ def hash_password(password: str) -> str:
     return password_hash.hash(password)
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def verify_login_password(plain_password: str, hashed_password: str | None) -> bool:
+    """Checks a login password, spending the same time when there is no user."""
+    if hashed_password is None:
+        password_hash.verify(plain_password, DUMMY_PASSWORD_HASH)
+        return False
+
     return password_hash.verify(plain_password, hashed_password)
 
 

@@ -46,7 +46,7 @@ def test_onboarding_creates_business_and_admin_who_can_log_in(
     assert admin.role == ROLE_ADMIN
 
     login_response = client.post(
-        "/login",
+        f"/businesses/{VALID['slug']}/login",
         json={
             "email": VALID["admin_email"],
             "password": VALID["admin_password"],

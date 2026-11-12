@@ -77,7 +77,7 @@ Accounts are created by the operator; there is no public registration. Create a 
 docker compose exec app python -m app.backend.cli create-business --name "עסק מקומי" --slug local-business --admin-email admin@local.example
 ```
 
-The command prompts for the administrator password. Obtain a token through `/login` and send it as `Authorization: Bearer <token>` when calling `/tasks`. For production, see [Operator tasks](docs/operator-tasks.md).
+The command prompts for the administrator password. Obtain a token through `/businesses/{slug}/login` (here `/businesses/local-business/login`) and send it as `Authorization: Bearer <token>` when calling `/tasks`. For production, see [Operator tasks](docs/operator-tasks.md).
 
 Stop the local services with:
 
