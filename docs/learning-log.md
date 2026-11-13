@@ -500,3 +500,40 @@ feat: add a least-privilege database role for the application
 infra: run migrations with a separate database URL
 
 infra: block container access to instance metadata on the app server
+
+## Milestone 19 — Business-specific login
+
+Goal:
+
+Scope login and email uniqueness to each business without an unsafe rollback window.
+
+Learned:
+
+- How the order of two releases keeps rollback safe: change the API while the old data rule still holds, then relax the rule.
+- Why a URL-based rate limit must move with the endpoint, and how an Nginx regex location matches a path pattern.
+- How a unique index on an expression (`lower(email)`) enforces case-insensitive uniqueness in the database.
+- Why a migration should be refused rather than half-applied when its downgrade cannot preserve the data, and why its error should not print personal data.
+- How response timing can reveal which accounts exist, and how a dummy password check removes the difference.
+- Why the manual deploy trigger is limited to `main` and serialized with a concurrency group.
+
+Built:
+
+- `POST /businesses/{slug}/login`, replacing `POST /login`.
+- The login rate limit on the new path, shared across businesses per client IP.
+- Migration `586fecaea66f`: emails unique per business, ignoring capitals.
+- A manual deployment trigger for `main`.
+
+Verified:
+
+- Login through the new path in production; `POST /login` returns `404`; repeated failed logins receive `429`.
+- Migration `586fecaea66f` applied through a normal deployment.
+- The same email accepted in a second business and a capitals-only duplicate refused in production.
+- A manual deployment of `main` succeeded; on another branch the deploy job was skipped.
+
+Git:
+
+feat!: replace /login with business-specific login
+
+feat: make user emails unique per business
+
+ci: add a manual deploy trigger for main
