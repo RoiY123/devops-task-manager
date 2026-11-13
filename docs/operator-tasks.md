@@ -158,7 +158,7 @@ The commands below name both the business and the email; a user in another busin
   --business BUSINESS_SLUG --email USER_EMAIL --role member
 ```
 
-An email already used in any business is refused.
+An email already used in that business is refused, ignoring capitals. The same email may exist in another business as a separate account with its own password.
 
 **Reset a password.** Application instance; one command. It prompts twice for the new password:
 
