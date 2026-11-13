@@ -108,9 +108,11 @@ Completed:
 - Operator business management over SSM: rename business display names, delete empty businesses, and an interactive operator menu
 - Least-privilege database user for the application, with migrations under a separate schema-owner URL
 - Container access to instance metadata blocked on the application instance
+- Business-specific login (`POST /businesses/{slug}/login`) with per-business, case-insensitive email uniqueness
+- Manual deployment trigger for `main` with one deployment at a time
 
 Current milestone:
-- Multi-business support: tenancy foundation, operator onboarding, closed public registration, operator user management, and business management implemented and verified in production
+- Multi-business support: tenancy foundation, operator onboarding, closed public registration, operator user management, business management, and business-specific login implemented and verified in production
 
 Next milestone:
 - TBD
