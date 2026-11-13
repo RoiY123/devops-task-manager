@@ -97,32 +97,17 @@ def test_onboarding_rejects_duplicate_slug(db_session: Session) -> None:
     assert user_count(db_session, "other@cohen.example") == 0
 
 
-def test_taken_email_does_not_leave_a_business_without_admin(
+def test_admin_email_may_already_exist_in_another_business(
     db_session: Session,
 ) -> None:
     create_business_with_admin(db_session, **VALID)
 
-    with pytest.raises(OperatorError, match="already registered"):
-        create_business_with_admin(
-            db_session,
-            **{**VALID, "slug": "cohen-electric"},
-        )
+    create_business_with_admin(
+        db_session,
+        **{**VALID, "slug": "cohen-electric", "admin_email": "Dana@Cohen.example"},
+    )
 
-    assert business_count(db_session, "cohen-electric") == 0
-
-
-def test_email_differing_only_in_capitals_counts_as_taken(
-    db_session: Session,
-) -> None:
-    create_business_with_admin(db_session, **VALID)
-
-    with pytest.raises(OperatorError, match="already registered"):
-        create_business_with_admin(
-            db_session,
-            **{**VALID, "slug": "cohen-electric", "admin_email": "Dana@Cohen.example"},
-        )
-
-    assert business_count(db_session, "cohen-electric") == 0
+    assert business_count(db_session, "cohen-electric") == 1
 
 
 def test_hebrew_name_is_stored_in_normalized_form(db_session: Session) -> None:

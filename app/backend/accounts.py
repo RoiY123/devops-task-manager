@@ -51,15 +51,19 @@ def check_password(password: str) -> None:
         )
 
 
-def ensure_email_is_free(db: Session, email: str) -> None:
-    # Email is still unique across all businesses until business-specific login exists.
-    # Compared case-insensitively so Dana@x and dana@x cannot become two accounts.
+def ensure_email_is_free(db: Session, email: str, business: Business) -> None:
+    # Unique per business, ignoring capitals, like uq_users_business_id_lower_email.
     taken = db.scalar(
-        select(User.id).where(func.lower(User.email) == email.lower())
+        select(User.id).where(
+            User.business_id == business.id,
+            func.lower(User.email) == email.lower(),
+        )
     )
 
     if taken is not None:
-        raise OperatorError(f"Email {email!r} is already registered")
+        raise OperatorError(
+            f"Email {email!r} is already registered in business {business.slug!r}"
+        )
 
 
 def check_role(role: str) -> None:
@@ -169,7 +173,7 @@ def validate_new_user(
     check_role(role)
     business = get_business(db, business_slug)
     email = clean_email(email)
-    ensure_email_is_free(db, email)
+    ensure_email_is_free(db, email, business)
 
     return NewUser(business_id=business.id, email=email, role=role)
 

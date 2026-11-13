@@ -8,7 +8,6 @@ from app.backend.accounts import (
     OperatorError,
     check_password,
     clean_email,
-    ensure_email_is_free,
 )
 from app.backend.businesses import clean_business_name, clean_slug
 from app.backend.models import ROLE_ADMIN, Business, User
@@ -45,8 +44,6 @@ def validate_new_business(
     if db.scalar(select(Business.id).where(Business.slug == slug)) is not None:
         raise OperatorError(f"Slug {slug!r} is already used by another business")
 
-    ensure_email_is_free(db, admin_email)
-
     return NewBusiness(name=name, slug=slug, admin_email=admin_email)
 
 
@@ -58,7 +55,7 @@ def create_business_with_admin(
     admin_email: str,
     admin_password: str,
 ) -> OnboardedBusiness:
-    # Validated again here: the slug or email may have been taken
+    # Validated again here: the slug may have been taken
     # while the operator was typing the password.
     new = validate_new_business(db, name=name, slug=slug, admin_email=admin_email)
     check_password(admin_password)
@@ -82,7 +79,7 @@ def create_business_with_admin(
         # The checks above can race with a concurrent onboarding;
         # the database constraints are the final guard.
         raise OperatorError(
-            "The slug or admin email was taken while onboarding; "
+            "The slug was taken while onboarding; "
             "nothing was created"
         ) from error
 

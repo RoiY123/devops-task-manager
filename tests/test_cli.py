@@ -133,15 +133,21 @@ def test_rejected_slug_reports_error_before_asking_for_password(
     assert business_count(db_session) == before
 
 
-def test_taken_email_reports_error_before_asking_for_password(
+def test_email_taken_in_the_business_is_reported_before_asking_for_password(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
     user_factory,
 ) -> None:
-    user_factory("dana@cohen.example")
+    user_factory("avi@example.com")
 
-    exit_code = run_cli(monkeypatch, db_session, ARGS, [])
+    # No scripted passwords: the email must be rejected before any prompt.
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        user_args("add-user", "Avi@Example.com", "--role", "member"),
+        [],
+    )
 
     assert exit_code == 1
     assert "already registered" in capsys.readouterr().err

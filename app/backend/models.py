@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Integer, String, ForeignKey, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, Integer, String, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -92,9 +92,7 @@ class User(Base):
 
     email: Mapped[str] = mapped_column(
         String(320),
-        unique=True,
         nullable=False,
-        index=True,
     )
 
     hashed_password: Mapped[str] = mapped_column(
@@ -130,3 +128,13 @@ class User(Base):
         back_populates="owner",
         cascade="all, delete-orphan",
     )
+
+
+# The same email may belong to different businesses;
+# within one business, emails must differ by more than capitals.
+Index(
+    "uq_users_business_id_lower_email",
+    User.business_id,
+    func.lower(User.email),
+    unique=True,
+)

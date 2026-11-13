@@ -91,18 +91,37 @@ def test_add_user_rejects_invalid_input_and_saves_nothing(
     assert user_count(db_session, data["email"]) == 0
 
 
-def test_add_user_rejects_email_used_in_any_business(
+def test_add_user_allows_an_email_used_in_another_business(
     db_session: Session,
     user_factory,
     other_business: Business,
 ) -> None:
     user_factory("avi@example.com")
 
-    # Different business and capitalisation: still the same email globally.
-    with pytest.raises(OperatorError, match="already registered"):
+    add_user(
+        db_session,
+        business_slug=other_business.slug,
+        email="avi@example.com",
+        role=ROLE_MEMBER,
+        password=PASSWORD,
+    )
+
+    assert user_count(db_session, "avi@example.com") == 2
+
+
+def test_add_user_rejects_an_email_taken_in_the_same_business(
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com")
+
+    # Differs only in capitals, so it is the same email.
+    with pytest.raises(
+        OperatorError, match="already registered in business 'test-business'"
+    ):
         add_user(
             db_session,
-            business_slug=other_business.slug,
+            business_slug=SLUG,
             email="Avi@Example.com",
             role=ROLE_MEMBER,
             password=PASSWORD,

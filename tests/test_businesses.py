@@ -38,6 +38,40 @@ def test_business_with_users_cannot_be_deleted(db_session: Session) -> None:
             db_session.delete(business)
 
 
+def test_database_rejects_same_email_in_one_business_ignoring_capitals(
+    db_session: Session,
+    test_business: Business,
+) -> None:
+    db_session.add(
+        User(email="avi@example.com", hashed_password="not-a-real-hash", business=test_business)
+    )
+    db_session.flush()
+
+    with pytest.raises(IntegrityError, match="uq_users_business_id_lower_email"):
+        with db_session.begin_nested():
+            db_session.add(
+                User(
+                    email="Avi@Example.com",
+                    hashed_password="not-a-real-hash",
+                    business=test_business,
+                )
+            )
+
+
+def test_database_allows_same_email_in_different_businesses(
+    db_session: Session,
+    test_business: Business,
+) -> None:
+    other = Business(name="Other", slug="other-business")
+    db_session.add_all(
+        [
+            User(email="avi@example.com", hashed_password="not-a-real-hash", business=test_business),
+            User(email="avi@example.com", hashed_password="not-a-real-hash", business=other),
+        ]
+    )
+    db_session.flush()
+
+
 def test_database_rejects_duplicate_slug(db_session: Session) -> None:
     db_session.add(Business(name="Acme", slug="acme"))
     db_session.flush()
