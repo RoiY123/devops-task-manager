@@ -10,6 +10,8 @@ from app.backend.accounts import (
     remove_user,
     reset_password,
     set_role,
+    set_task_visibility,
+    task_oversight_warning,
 )
 from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, Task, User
 
@@ -297,3 +299,68 @@ def test_list_users_shows_empty_businesses_and_filters_by_slug(
 
     with pytest.raises(OperatorError, match="No business"):
         list_users(db_session, "no-such-business")
+
+
+def test_new_admins_see_all_tasks_and_members_their_own(
+    db_session: Session,
+    test_business: Business,
+) -> None:
+    admin = add_user(
+        db_session,
+        business_slug=SLUG,
+        email="dana@example.com",
+        role=ROLE_ADMIN,
+        password=PASSWORD,
+    )
+    member = add_user(
+        db_session,
+        business_slug=SLUG,
+        email="avi@example.com",
+        role=ROLE_MEMBER,
+        password=PASSWORD,
+    )
+
+    assert (admin.sees_all_tasks, member.sees_all_tasks) == (True, False)
+
+
+def test_role_change_applies_the_roles_default_visibility(
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    avi = user_factory("avi@example.com")
+
+    set_role(db_session, business_slug=SLUG, email="avi@example.com", role=ROLE_ADMIN)
+    assert avi.sees_all_tasks is True
+
+    # A same-role call keeps a custom setting.
+    set_task_visibility(
+        db_session, business_slug=SLUG, email="avi@example.com", sees_all=False
+    )
+    set_role(db_session, business_slug=SLUG, email="avi@example.com", role=ROLE_ADMIN)
+    assert avi.sees_all_tasks is False
+
+    set_task_visibility(
+        db_session, business_slug=SLUG, email="avi@example.com", sees_all=True
+    )
+    set_role(db_session, business_slug=SLUG, email="avi@example.com", role=ROLE_MEMBER)
+    assert avi.sees_all_tasks is False
+
+
+def test_oversight_warning_only_when_no_admin_sees_all_tasks(
+    db_session: Session,
+    test_business: Business,
+    user_factory,
+) -> None:
+    # No users yet: nothing to oversee.
+    assert task_oversight_warning(db_session, SLUG) is None
+
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    assert task_oversight_warning(db_session, SLUG) is None
+
+    set_task_visibility(
+        db_session, business_slug=SLUG, email="dana@example.com", sees_all=False
+    )
+    assert "no admin in 'test-business' sees all tasks" in task_oversight_warning(
+        db_session, SLUG
+    )

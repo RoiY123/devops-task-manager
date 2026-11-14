@@ -140,11 +140,12 @@ class UserListing:
     user_id: int | None
     email: str | None
     role: str | None
+    sees_all_tasks: bool | None
 
 
 def list_users(db: Session, business_slug: str | None = None) -> list[UserListing]:
     query = (
-        select(Business.slug, Business.name, User.id, User.email, User.role)
+        select(Business.slug, Business.name, User.id, User.email, User.role, User.sees_all_tasks)
         .outerjoin(User, User.business_id == Business.id)
         .order_by(Business.slug, User.id)
     )
@@ -196,6 +197,8 @@ def add_user(
         hashed_password=hash_password(password),
         business_id=new.business_id,
         role=new.role,
+        # Admins see every task by default; members only their own.
+        sees_all_tasks=new.role == ROLE_ADMIN,
     )
     db.add(user)
 
@@ -237,13 +240,44 @@ def set_role(
     user = find_user(db, business_slug=business_slug, email=email)
     previous = user.role
 
+    if previous == role:
+        return previous
+
     if previous == ROLE_ADMIN and role != ROLE_ADMIN:
         ensure_business_keeps_an_admin(db, user, removing=False)
 
     user.role = role
+    # A role change applies that role's default; set-task-visibility adjusts it.
+    user.sees_all_tasks = role == ROLE_ADMIN
     db.commit()
 
     return previous
+
+
+def set_task_visibility(
+    db: Session, *, business_slug: str, email: str, sees_all: bool
+) -> None:
+    user = find_user(db, business_slug=business_slug, email=email)
+    user.sees_all_tasks = sees_all
+    db.commit()
+
+
+def task_oversight_warning(db: Session, business_slug: str) -> str | None:
+    """A warning when no admin can see, and so change, every task."""
+    business = get_business(db, business_slug)
+    users = select(func.count()).select_from(User).where(User.business_id == business.id)
+
+    if db.scalar(users) == 0:
+        return None
+
+    overseers = users.where(User.role == ROLE_ADMIN, User.sees_all_tasks.is_(True))
+    if db.scalar(overseers) > 0:
+        return None
+
+    return (
+        f"Warning: no admin in {business.slug!r} sees all tasks, so a task "
+        "can only be changed by someone who can see it."
+    )
 
 
 def remove_user(db: Session, *, business_slug: str, email: str) -> int:

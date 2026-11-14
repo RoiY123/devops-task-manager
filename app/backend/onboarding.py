@@ -66,6 +66,7 @@ def create_business_with_admin(
         hashed_password=hash_password(admin_password),
         business=business,
         role=ROLE_ADMIN,
+        sees_all_tasks=True,
     )
 
     db.add_all([business, admin])

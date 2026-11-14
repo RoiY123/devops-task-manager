@@ -6,6 +6,7 @@ from app.backend.database import get_db
 from app.backend.models import Business, Task as TaskModel, User
 from app.backend.schemas import Task, TaskCreate, TaskUpdate, UserLogin, Token
 from app.backend.security import create_access_token, get_current_user, verify_login_password
+from app.backend.visibility import ensure_can_change, get_visible_task, visible_tasks
 
 
 router = APIRouter()
@@ -17,9 +18,7 @@ def get_tasks(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    statement = select(TaskModel).where(
-        TaskModel.owner_id == current_user.id
-    )
+    statement = select(TaskModel).where(visible_tasks(current_user))
 
     if completed is not None:
         statement = statement.where(
@@ -37,20 +36,7 @@ def get_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    statement = select(TaskModel).where(
-        TaskModel.id == task_id,
-        TaskModel.owner_id == current_user.id,
-    )
-
-    task = db.scalar(statement)
-
-    if task is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Task not found",
-        )
-    
-    return task
+    return get_visible_task(db, current_user, task_id)
 
 
 @router.post("/tasks", response_model=Task, status_code=201)
@@ -62,7 +48,8 @@ def create_task(
     new_task = TaskModel(
         title=task.title,
         completed=False,
-        owner_id=current_user.id
+        owner_id=current_user.id,
+        business_id=current_user.business_id,
     )
 
     db.add(new_task)
@@ -79,19 +66,9 @@ def update_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    statement = select(TaskModel).where(
-        TaskModel.id == task_id,
-        TaskModel.owner_id == current_user.id,
-    )
+    task = get_visible_task(db, current_user, task_id)
+    ensure_can_change(current_user, task)
 
-    task = db.scalar(statement)
-
-    if task is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Task not found",
-        )
-    
     if updated_task.title is not None:
         task.title = updated_task.title
     
@@ -110,18 +87,8 @@ def delete_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    statement = select(TaskModel).where(
-        TaskModel.id == task_id,
-        TaskModel.owner_id == current_user.id,
-    )
-
-    task = db.scalar(statement)
-
-    if task is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Task not found",
-        )
+    task = get_visible_task(db, current_user, task_id)
+    ensure_can_change(current_user, task)
 
     db.delete(task)
     db.commit()

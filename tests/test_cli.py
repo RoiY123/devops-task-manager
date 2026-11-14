@@ -665,3 +665,55 @@ def test_remove_user_refuses_without_interactive_terminal(
     assert exit_code == 1
     assert "interactively" in capsys.readouterr().err
     assert db_session.get(User, avi_id) is not None
+
+
+def test_set_task_visibility_reports_change_and_oversight_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        user_args("set-task-visibility", "dana@example.com", "--own"),
+        [],
+        interactive=False,
+    )
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "dana@example.com now sees own tasks." in output
+    assert "Warning: no admin in 'test-business' sees all tasks" in output
+
+
+def test_list_users_and_set_role_show_task_visibility(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("avi@example.com")
+
+    run_cli(
+        monkeypatch,
+        db_session,
+        ["list-users", "--business", "test-business"],
+        [],
+        interactive=False,
+    )
+    listing = capsys.readouterr().out
+    assert "dana@example.com  admin  all tasks" in listing
+    assert "avi@example.com  member  own tasks" in listing
+
+    run_cli(
+        monkeypatch,
+        db_session,
+        user_args("set-role", "avi@example.com", "--role", "admin"),
+        [],
+        interactive=False,
+    )
+    assert "from member to admin; now sees all tasks." in capsys.readouterr().out
