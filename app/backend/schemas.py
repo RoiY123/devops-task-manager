@@ -5,6 +5,7 @@ class Task(BaseModel):
     id: int
     title: str
     completed: bool
+    owner_id: int
 
 
 class TaskCreate(BaseModel):

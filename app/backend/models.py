@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, Integer, String, ForeignKey, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKeyConstraint, Index, Integer, String, ForeignKey, UniqueConstraint, false, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -50,6 +50,15 @@ class Business(Base):
 class Task(Base):
     __tablename__ = "tasks"
 
+    __table_args__ = (
+        # A task always belongs to its owner's business.
+        ForeignKeyConstraint(
+            ["business_id", "owner_id"],
+            ["users.business_id", "users.id"],
+            name="fk_tasks_business_id_owner_id_users",
+        ),
+    )
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     title: Mapped[str] = mapped_column(
@@ -69,8 +78,15 @@ class Task(Base):
         index=True,
     )
 
+    business_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        index=True,
+    )
+
     owner: Mapped["User"] = relationship(
         back_populates="tasks",
+        foreign_keys=[owner_id],
     )
 
 
@@ -86,6 +102,8 @@ class User(Base):
             "role IN ('admin', 'member')",
             name="ck_users_role",
         ),
+        # Target of fk_tasks_business_id_owner_id_users.
+        UniqueConstraint("business_id", "id", name="uq_users_business_id_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -124,9 +142,17 @@ class User(Base):
         server_default=ROLE_MEMBER,
     )
 
+    # Whether the user sees every task in the business, not only their own.
+    sees_all_tasks: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=false(),
+    )
+
     tasks: Mapped[list["Task"]] = relationship(
         back_populates="owner",
         cascade="all, delete-orphan",
+        foreign_keys="Task.owner_id",
     )
 
 

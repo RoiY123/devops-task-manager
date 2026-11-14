@@ -44,6 +44,7 @@ def test_onboarding_creates_business_and_admin_who_can_log_in(
     assert business.slug == VALID["slug"]
     assert admin.business_id == business.id
     assert admin.role == ROLE_ADMIN
+    assert admin.sees_all_tasks is True
 
     login_response = client.post(
         f"/businesses/{VALID['slug']}/login",

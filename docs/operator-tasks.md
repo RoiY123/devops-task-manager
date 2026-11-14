@@ -145,11 +145,11 @@ Read-only. Application instance; one command. Remove `--business BUSINESS_SLUG` 
 ./scripts/operator.sh list-users --business BUSINESS_SLUG
 ```
 
-Each line shows the business slug, its name, and one user's id, email and role, or `no users`. Terminals may display Hebrew names right-to-left reversed; the stored text is not affected.
+Each line shows the business slug, its name, and one user's id, email, role and task visibility (`all tasks` or `own tasks`), or `no users`. Terminals may display Hebrew names right-to-left reversed; the stored text is not affected.
 
 ### Manage users
 
-The commands below name both the business and the email; a user in another business is not found. Type emails in lowercase: login matches the email exactly as it was created.
+The commands below name both the business and the email; a user in another business is not found.
 
 **Add a user.** Application instance; one command. It prompts twice for the new user's password (at least 12 characters). Use `--role admin` for an administrator:
 
@@ -175,6 +175,17 @@ Logins made before the reset stay valid until their tokens expire (`ACCESS_TOKEN
 ./scripts/operator.sh set-role \
   --business BUSINESS_SLUG --email USER_EMAIL --role admin
 ```
+
+A role change also applies that role's default task visibility: admins see all tasks, members their own. Re-apply a custom setting afterwards with `set-task-visibility`.
+
+**Change task visibility.** Chooses whether a user sees every task in their business (`--all`) or only their own (`--own`). Seeing a task does not allow changing it: only its owner and admins who can see it can change or delete it. Application instance; one command:
+
+```bash
+./scripts/operator.sh set-task-visibility \
+  --business BUSINESS_SLUG --email USER_EMAIL --all
+```
+
+Expected: `USER_EMAIL now sees all tasks.` If no admin in the business sees all tasks afterwards, a warning follows. The change is still saved, but a task can then only be changed by someone who can see it. Give at least one admin `--all`.
 
 **Remove a user.** Permanently deletes the user and all their tasks; their existing logins stop working immediately. Application instance; one command. It shows how many tasks will be deleted, then asks you to type the email again:
 

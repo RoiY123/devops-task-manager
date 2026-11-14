@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.backend import cli
 from app.backend.database import get_db
 from app.backend.main import app
-from app.backend.models import ROLE_MEMBER, Business, User
+from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, User
 from app.backend.security import hash_password
 
 
@@ -87,12 +87,19 @@ def user_factory(db_session: Session, test_business: Business):
         email: str,
         password: str = "password123",
         role: str = ROLE_MEMBER,
+        sees_all_tasks: bool | None = None,
+        business: Business | None = None,
     ) -> User:
+        # Same default as the application: admins see every task.
+        if sees_all_tasks is None:
+            sees_all_tasks = role == ROLE_ADMIN
+
         user = User(
             email=email,
             hashed_password=hash_password(password),
-            business=test_business,
+            business=business or test_business,
             role=role,
+            sees_all_tasks=sees_all_tasks,
         )
         db_session.add(user)
         db_session.flush()
@@ -107,11 +114,12 @@ def auth_headers_factory(client: TestClient, user_factory):
     def create_user(
         email: str,
         password: str = "password123",
+        **options,
     ) -> dict[str, str]:
-        user_factory(email, password)
+        user = user_factory(email, password, **options)
 
         login_response = client.post(
-            "/businesses/test-business/login",
+            f"/businesses/{user.business.slug}/login",
             json={"email": email, "password": password},
         )
         assert login_response.status_code == 200

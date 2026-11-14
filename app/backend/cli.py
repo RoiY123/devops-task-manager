@@ -34,6 +34,8 @@ from app.backend.accounts import (
     remove_user,
     reset_password,
     set_role,
+    set_task_visibility,
+    task_oversight_warning,
     validate_new_user,
 )
 from app.backend.businesses import (
@@ -42,6 +44,7 @@ from app.backend.businesses import (
     rename_business,
 )
 from app.backend.database import SessionLocal
+from app.backend.models import ROLE_ADMIN
 from app.backend.onboarding import create_business_with_admin, validate_new_business
 
 
@@ -172,6 +175,15 @@ def create_business(db: Session, args: argparse.Namespace) -> str:
     )
 
 
+def visibility_text(sees_all: bool) -> str:
+    return "sees all tasks" if sees_all else "sees own tasks"
+
+
+def with_oversight_warning(db: Session, slug: str, message: str) -> str:
+    warning = task_oversight_warning(db, slug)
+    return f"{message}\n{warning}" if warning else message
+
+
 def list_users_command(db: Session, args: argparse.Namespace) -> str:
     rows = list_users(db, args.business)
 
@@ -181,7 +193,8 @@ def list_users_command(db: Session, args: argparse.Namespace) -> str:
     return "\n".join(
         f"{row.business_slug}  ({row.business_name})  "
         + (
-            f"user {row.user_id}  {row.email}  {row.role}"
+            f"user {row.user_id}  {row.email}  {row.role}  "
+            f"{'all tasks' if row.sees_all_tasks else 'own tasks'}"
             if row.user_id is not None
             else "no users"
         )
@@ -234,7 +247,11 @@ def set_role_command(db: Session, args: argparse.Namespace) -> str:
     if previous == args.role:
         return f"{args.email.strip()} is already {args.role}; nothing changed."
 
-    return f"Changed {args.email.strip()} from {previous} to {args.role}."
+    message = (
+        f"Changed {args.email.strip()} from {previous} to {args.role}; "
+        f"now {visibility_text(args.role == ROLE_ADMIN)}."
+    )
+    return with_oversight_warning(db, args.business, message)
 
 
 def remove_user_command(db: Session, args: argparse.Namespace) -> str:
@@ -252,10 +269,24 @@ def remove_user_command(db: Session, args: argparse.Namespace) -> str:
 
     deleted_tasks = remove_user(db, business_slug=args.business, email=email)
 
-    return (
+    message = (
         f"Removed {email} from business {args.business.strip()!r} "
         f"and deleted {deleted_tasks} tasks."
     )
+    return with_oversight_warning(db, args.business, message)
+
+
+def set_task_visibility_command(db: Session, args: argparse.Namespace) -> str:
+    if args.visibility not in ("all", "own"):
+        raise OperatorError("Visibility must be 'all' or 'own'")
+
+    sees_all = args.visibility == "all"
+    set_task_visibility(
+        db, business_slug=args.business, email=args.email, sees_all=sees_all
+    )
+
+    message = f"{args.email.strip()} now {visibility_text(sees_all)}."
+    return with_oversight_warning(db, args.business, message)
 
 
 def rename_business_command(db: Session, args: argparse.Namespace) -> str:
@@ -312,6 +343,11 @@ MENU: list[tuple[str, Handler, list[tuple[str, str, bool]]]] = [
         ("business", "Business slug", True),
         ("email", "Email", True),
         ("role", "New role (admin/member)", True),
+    ]),
+    ("Change task visibility", set_task_visibility_command, [
+        ("business", "Business slug", True),
+        ("email", "Email", True),
+        ("visibility", "Visibility (all/own)", True),
     ]),
     ("Remove user", remove_user_command, [
         ("business", "Business slug", True),
@@ -437,6 +473,18 @@ def build_parser() -> argparse.ArgumentParser:
     role = user_command("set-role", "Promote or demote a user.")
     role.add_argument("--role", required=True, choices=ROLES)
     role.set_defaults(handler=set_role_command)
+
+    visibility = user_command("set-task-visibility", "Choose which tasks a user sees.")
+    choice = visibility.add_mutually_exclusive_group(required=True)
+    choice.add_argument(
+        "--all", dest="visibility", action="store_const", const="all",
+        help="Every task in the business.",
+    )
+    choice.add_argument(
+        "--own", dest="visibility", action="store_const", const="own",
+        help="Only the user's own tasks.",
+    )
+    visibility.set_defaults(handler=set_task_visibility_command)
 
     remove = user_command("remove-user", "Delete a user and their tasks.")
     remove.set_defaults(handler=remove_user_command)

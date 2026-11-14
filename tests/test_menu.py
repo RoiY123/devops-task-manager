@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.backend.cli import main
-from app.backend.models import ROLE_MEMBER, Business, User
+from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, User
 
 
 PASSWORD = "correct-horse-battery"
@@ -58,7 +58,13 @@ def test_menu_lists_every_action_and_exits_on_zero(
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    for label in ["1  Create business", "6  Remove user", "8  Delete business", "0  Exit"]:
+    for label in [
+        "1  Create business",
+        "6  Change task visibility",
+        "7  Remove user",
+        "9  Delete business",
+        "0  Exit",
+    ]:
         assert label in output
 
 
@@ -139,7 +145,7 @@ def test_menu_removal_uses_the_typed_confirmation(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["6", "test-business", "avi@example.com", "avi@example.com", "0"],
+        ["7", "test-business", "avi@example.com", "avi@example.com", "0"],
     )
 
     assert exit_code == 0
@@ -268,8 +274,8 @@ def test_menu_renames_and_deletes_a_business(
         monkeypatch,
         db_session,
         [
-            "7", "empty-business", "שם חדש",
-            "8", "empty-business", "empty-business",
+            "8", "empty-business", "שם חדש",
+            "9", "empty-business", "empty-business",
             "0",
         ],
     )
@@ -288,10 +294,10 @@ def test_unknown_choice_is_reported(
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
 ) -> None:
-    exit_code = run_menu(monkeypatch, db_session, ["9", "0"])
+    exit_code = run_menu(monkeypatch, db_session, ["99", "0"])
 
     assert exit_code == 0
-    assert "Unknown choice '9'." in capsys.readouterr().out
+    assert "Unknown choice '99'." in capsys.readouterr().out
 
 
 def test_menu_refuses_without_interactive_terminal(
@@ -321,3 +327,40 @@ def test_ctrl_c_exits_cleanly(
 
     assert exit_code == 1
     assert "Exited; an unfinished action was not saved." in capsys.readouterr().out
+
+
+def test_menu_changes_task_visibility(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("avi@example.com")
+
+    exit_code = run_menu(
+        monkeypatch,
+        db_session,
+        ["6", "test-business", "avi@example.com", "all", "0"],
+    )
+
+    assert exit_code == 0
+    assert "avi@example.com now sees all tasks." in capsys.readouterr().out
+    assert find_user(db_session, "avi@example.com").sees_all_tasks is True
+
+
+def test_menu_rejects_an_unknown_visibility(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com")
+
+    run_menu(
+        monkeypatch,
+        db_session,
+        ["6", "test-business", "avi@example.com", "some", "0"],
+    )
+
+    assert "Visibility must be 'all' or 'own'" in capsys.readouterr().err
