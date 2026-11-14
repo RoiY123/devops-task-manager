@@ -110,12 +110,13 @@ Completed:
 - Container access to instance metadata blocked on the application instance
 - Business-specific login (`POST /businesses/{slug}/login`) with per-business, case-insensitive email uniqueness
 - Manual deployment trigger for `main` with one deployment at a time
+- Per-user task visibility (admins see all tasks by default, members their own; operator-adjustable), with tasks tied to their owner's business by a database constraint
 
 Current milestone:
-- Multi-business support: tenancy foundation, operator onboarding, closed public registration, operator user management, business management, and business-specific login implemented and verified in production
+- Task visibility
 
 Next milestone:
-- TBD
+- Admin user management through the API, including a business owner role above admin
 
 ---
 
@@ -314,6 +315,19 @@ Serve multiple independent businesses from one application and database. Every u
 Businesses and their first administrators are created by the operator with a command run over SSM; there is no public registration. Users who existed before tenancy were kept in a `legacy` business.
 
 The operator manages users in every business (add, reset password, change role, remove) and businesses themselves (rename the display name, delete when empty) only through the same CLI over SSM, never through web endpoints, so these powers stay behind AWS access. An interactive menu in the same CLI offers the same actions; it adds no access path. Commands that take a password or confirm a deletion refuse to run without an interactive terminal. A business that has users must keep at least one admin.
+
+Status:
+Accepted
+
+---
+
+### Task Visibility
+
+Decision:
+
+Task visibility is set per user, not fixed by role. New admins default to seeing every task in their business and members to only their own, and a role change applies the new role's default. The operator adjusts it through the CLI over SSM until admins can manage it through the API.
+
+Seeing a task does not allow changing it: only its owner and admins who can see it may change or delete it. A task the user cannot see returns `404`, so its existence is not revealed; a visible task the user may not change returns `403`. The CLI warns, without blocking, when no admin in a business sees all tasks, because tasks could then become impossible to manage.
 
 Status:
 Accepted
