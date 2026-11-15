@@ -111,12 +111,13 @@ Completed:
 - Business-specific login (`POST /businesses/{slug}/login`) with per-business, case-insensitive email uniqueness
 - Manual deployment trigger for `main` with one deployment at a time
 - Per-user task visibility (admins see all tasks by default, members their own; operator-adjustable), with tasks tied to their owner's business by a database constraint
+- View-only task grants between users, managed by the operator
 
 Current milestone:
-- Task visibility
+- Admin user management through the API, including a business owner role above admin
 
 Next milestone:
-- Admin user management through the API, including a business owner role above admin
+- TBD
 
 ---
 
@@ -328,6 +329,8 @@ Decision:
 Task visibility is set per user, not fixed by role. New admins default to seeing every task in their business and members to only their own, and a role change applies the new role's default. The operator adjusts it through the CLI over SSM until admins can manage it through the API.
 
 Seeing a task does not allow changing it: only its owner and admins who can see it may change or delete it. A task the user cannot see returns `404`, so its existence is not revealed; a visible task the user may not change returns `403`. The CLI warns, without blocking, when no admin in a business sees all tasks, because tasks could then become impossible to manage.
+
+A grant lets a viewer see every task of a chosen owner in the same business, view only. Grants are one-way, kept within one business by the database, and removed together with either user. Each grant records its permission, so allowing editing later extends the permission rather than redesigning grants.
 
 Status:
 Accepted
