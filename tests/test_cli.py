@@ -259,7 +259,7 @@ def test_remove_user_after_typed_confirmation(
     user_factory,
 ) -> None:
     avi = user_factory("avi@example.com")
-    db_session.add(Task(title="Avi 1", owner=avi))
+    db_session.add(Task(title="Avi 1", owner=avi, business_id=avi.business_id))
     db_session.flush()
     avi_id = avi.id
 
@@ -717,3 +717,103 @@ def test_list_users_and_set_role_show_task_visibility(
         interactive=False,
     )
     assert "from member to admin; now sees all tasks." in capsys.readouterr().out
+
+
+def grant_args(command: str, viewer: str, owner: str) -> list[str]:
+    return [
+        command, "--business", "test-business", "--viewer", viewer, "--owner", owner
+    ]
+
+
+def test_grant_task_view_reports_new_and_repeated_grants(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com")
+    user_factory("noa@example.com")
+    args = grant_args("grant-task-view", "noa@example.com", "avi@example.com")
+
+    run_cli(monkeypatch, db_session, args, [], interactive=False)
+    assert (
+        "noa@example.com now sees the tasks of avi@example.com (view only)."
+        in capsys.readouterr().out
+    )
+
+    run_cli(monkeypatch, db_session, args, [], interactive=False)
+    assert (
+        "already sees the tasks of avi@example.com; nothing changed."
+        in capsys.readouterr().out
+    )
+
+
+def test_grant_notes_a_viewer_who_already_sees_all_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("avi@example.com")
+
+    run_cli(
+        monkeypatch,
+        db_session,
+        grant_args("grant-task-view", "dana@example.com", "avi@example.com"),
+        [],
+        interactive=False,
+    )
+
+    assert "Note: dana@example.com already sees all tasks" in capsys.readouterr().out
+
+
+def test_revoke_and_list_report_when_there_is_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com")
+    user_factory("noa@example.com")
+
+    run_cli(
+        monkeypatch,
+        db_session,
+        ["list-task-grants", "--business", "test-business"],
+        [],
+        interactive=False,
+    )
+    assert "No task grants in business 'test-business'." in capsys.readouterr().out
+
+    run_cli(
+        monkeypatch,
+        db_session,
+        grant_args("revoke-task-view", "noa@example.com", "avi@example.com"),
+        [],
+        interactive=False,
+    )
+    assert (
+        "had no grant for the tasks of avi@example.com; nothing changed."
+        in capsys.readouterr().out
+    )
+
+
+def test_grant_to_the_same_user_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com")
+
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        grant_args("grant-task-view", "avi@example.com", "avi@example.com"),
+        [],
+        interactive=False,
+    )
+
+    assert exit_code == 1
+    assert "always sees their own tasks" in capsys.readouterr().err

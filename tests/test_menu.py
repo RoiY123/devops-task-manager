@@ -59,10 +59,10 @@ def test_menu_lists_every_action_and_exits_on_zero(
     assert exit_code == 0
     output = capsys.readouterr().out
     for label in [
-        "1  Create business",
-        "6  Change task visibility",
-        "7  Remove user",
-        "9  Delete business",
+        "1  List users",
+        "6  Remove user",
+        "9  Change task visibility",
+        "12  List task grants",
         "0  Exit",
     ]:
         assert label in output
@@ -77,7 +77,7 @@ def test_menu_adds_a_user_with_hidden_password(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["3", "test-business", "avi@example.com", "member", "0"],
+        ["5", "test-business", "avi@example.com", "member", "0"],
         passwords=[PASSWORD, PASSWORD],
     )
 
@@ -95,7 +95,7 @@ def test_blank_answer_cancels_without_changes(
     test_business: Business,
 ) -> None:
     # Blank email: no password prompt (none scripted) and no user created.
-    exit_code = run_menu(monkeypatch, db_session, ["3", "test-business", "", "0"])
+    exit_code = run_menu(monkeypatch, db_session, ["5", "test-business", "", "0"])
 
     assert exit_code == 0
     assert "Cancelled; nothing was changed." in capsys.readouterr().out
@@ -110,7 +110,7 @@ def test_error_returns_to_the_menu(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["3", "no-such-business", "avi@example.com", "member", "0"],
+        ["5", "no-such-business", "avi@example.com", "member", "0"],
     )
 
     assert exit_code == 0
@@ -128,7 +128,7 @@ def test_list_users_treats_blank_business_as_all(
 ) -> None:
     user_factory("avi@example.com")
 
-    exit_code = run_menu(monkeypatch, db_session, ["2", "", "0"])
+    exit_code = run_menu(monkeypatch, db_session, ["1", "", "0"])
 
     assert exit_code == 0
     assert "test-business  (עסק בדיקות)  user" in capsys.readouterr().out
@@ -145,7 +145,7 @@ def test_menu_removal_uses_the_typed_confirmation(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["7", "test-business", "avi@example.com", "avi@example.com", "0"],
+        ["6", "test-business", "avi@example.com", "avi@example.com", "0"],
     )
 
     assert exit_code == 0
@@ -168,7 +168,7 @@ def test_unreadable_answer_reports_error_and_returns_to_menu(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["3", "test-business", f"{LEFTOVER_BYTE}avi@example.com", "0"],
+        ["5", "test-business", f"{LEFTOVER_BYTE}avi@example.com", "0"],
     )
 
     assert exit_code == 0
@@ -191,7 +191,7 @@ def test_unreadable_password_in_menu_returns_to_menu(
     monkeypatch.setattr(sys, "stdin", FakeStdin(True))
     monkeypatch.setattr(
         "builtins.input",
-        scripted(["3", "test-business", "avi@example.com", "member", "0"]),
+        scripted(["5", "test-business", "avi@example.com", "member", "0"]),
     )
     monkeypatch.setattr(getpass, "getpass", leftover_byte)
     db_session.commit()
@@ -215,7 +215,7 @@ def test_menu_creates_a_business(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["1", "אינסטלציה כהן", "cohen-plumbing", "dana@cohen.example", "0"],
+        ["2", "אינסטלציה כהן", "cohen-plumbing", "dana@cohen.example", "0"],
         passwords=[PASSWORD, PASSWORD],
     )
 
@@ -235,7 +235,7 @@ def test_menu_resets_a_password(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["4", "test-business", "avi@example.com", "0"],
+        ["7", "test-business", "avi@example.com", "0"],
         passwords=[PASSWORD, PASSWORD],
     )
 
@@ -254,7 +254,7 @@ def test_menu_changes_a_role(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["5", "test-business", "avi@example.com", "admin", "0"],
+        ["8", "test-business", "avi@example.com", "admin", "0"],
     )
 
     assert exit_code == 0
@@ -274,8 +274,8 @@ def test_menu_renames_and_deletes_a_business(
         monkeypatch,
         db_session,
         [
-            "8", "empty-business", "שם חדש",
-            "9", "empty-business", "empty-business",
+            "3", "empty-business", "שם חדש",
+            "4", "empty-business", "empty-business",
             "0",
         ],
     )
@@ -341,7 +341,7 @@ def test_menu_changes_task_visibility(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["6", "test-business", "avi@example.com", "all", "0"],
+        ["9", "test-business", "avi@example.com", "all", "0"],
     )
 
     assert exit_code == 0
@@ -360,7 +360,34 @@ def test_menu_rejects_an_unknown_visibility(
     run_menu(
         monkeypatch,
         db_session,
-        ["6", "test-business", "avi@example.com", "some", "0"],
+        ["9", "test-business", "avi@example.com", "some", "0"],
     )
 
     assert "Visibility must be 'all' or 'own'" in capsys.readouterr().err
+
+
+def test_menu_grants_lists_and_revokes_task_view(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com")
+    user_factory("noa@example.com")
+
+    exit_code = run_menu(
+        monkeypatch,
+        db_session,
+        [
+            "10", "test-business", "noa@example.com", "avi@example.com",
+            "12", "test-business",
+            "11", "test-business", "noa@example.com", "avi@example.com",
+            "0",
+        ],
+    )
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "noa@example.com now sees the tasks of avi@example.com (view only)." in output
+    assert "noa@example.com  sees tasks of  avi@example.com  (view)" in output
+    assert "noa@example.com no longer sees the tasks of avi@example.com." in output

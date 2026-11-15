@@ -3,10 +3,10 @@
 Every rule stays inside the user's own business.
 """
 from fastapi import HTTPException, status
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.orm import Session
 
-from app.backend.models import ROLE_ADMIN, Task, User
+from app.backend.models import ROLE_ADMIN, Task, TaskGrant, User
 
 
 def visible_tasks(user: User) -> ColumnElement[bool]:
@@ -14,7 +14,14 @@ def visible_tasks(user: User) -> ColumnElement[bool]:
     if user.sees_all_tasks:
         return Task.business_id == user.business_id
 
-    return Task.owner_id == user.id
+    granted_owners = select(TaskGrant.owner_id).where(TaskGrant.viewer_id == user.id)
+
+    # Grants never cross businesses (their foreign keys ensure it);
+    # the business check keeps that true here even if a grant rule is ever loosened.
+    return (Task.business_id == user.business_id) & or_(
+        Task.owner_id == user.id,
+        Task.owner_id.in_(granted_owners),
+    )
 
 
 def get_visible_task(db: Session, user: User, task_id: int) -> Task:
