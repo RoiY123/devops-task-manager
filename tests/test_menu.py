@@ -61,8 +61,9 @@ def test_menu_lists_every_action_and_exits_on_zero(
     for label in [
         "1  List users",
         "6  Remove user",
-        "9  Change task visibility",
-        "12  List task grants",
+        "9  Transfer leadership",
+        "10  Change task visibility",
+        "13  List task grants",
         "0  Exit",
     ]:
         assert label in output
@@ -72,8 +73,11 @@ def test_menu_adds_a_user_with_hidden_password(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
-    test_business: Business,
+    user_factory,
 ) -> None:
+    # A leader first: the first user of an empty business must be an admin.
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+
     exit_code = run_menu(
         monkeypatch,
         db_session,
@@ -182,8 +186,10 @@ def test_unreadable_password_in_menu_returns_to_menu(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
-    test_business: Business,
+    user_factory,
 ) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+
     # The real getpass decodes strictly: a leftover byte raises while reading.
     def leftover_byte(prompt: str) -> str:
         raise UnicodeDecodeError("utf-8", b"\xd7", 0, 1, "invalid continuation byte")
@@ -341,7 +347,7 @@ def test_menu_changes_task_visibility(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["9", "test-business", "avi@example.com", "all", "0"],
+        ["10", "test-business", "avi@example.com", "all", "0"],
     )
 
     assert exit_code == 0
@@ -360,7 +366,7 @@ def test_menu_rejects_an_unknown_visibility(
     run_menu(
         monkeypatch,
         db_session,
-        ["9", "test-business", "avi@example.com", "some", "0"],
+        ["10", "test-business", "avi@example.com", "some", "0"],
     )
 
     assert "Visibility must be 'all' or 'own'" in capsys.readouterr().err
@@ -379,9 +385,9 @@ def test_menu_grants_lists_and_revokes_task_view(
         monkeypatch,
         db_session,
         [
-            "10", "test-business", "noa@example.com", "avi@example.com",
-            "12", "test-business",
             "11", "test-business", "noa@example.com", "avi@example.com",
+            "13", "test-business",
+            "12", "test-business", "noa@example.com", "avi@example.com",
             "0",
         ],
     )
@@ -391,3 +397,24 @@ def test_menu_grants_lists_and_revokes_task_view(
     assert "noa@example.com now sees the tasks of avi@example.com (view only)." in output
     assert "noa@example.com  sees tasks of  avi@example.com  (view)" in output
     assert "noa@example.com no longer sees the tasks of avi@example.com." in output
+
+
+def test_menu_transfers_leadership(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    avi_id = user_factory("avi@example.com", role=ROLE_ADMIN).id
+
+    exit_code = run_menu(
+        monkeypatch, db_session, ["9", "test-business", "avi@example.com", "0"]
+    )
+
+    assert exit_code == 0
+    assert "avi@example.com is now the leader" in capsys.readouterr().out
+    # The menu closed its session, so read the result from the database again.
+    assert db_session.scalar(
+        select(Business.leader_user_id).where(Business.slug == "test-business")
+    ) == avi_id

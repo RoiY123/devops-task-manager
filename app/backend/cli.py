@@ -27,7 +27,7 @@ from app.backend.accounts import (
     ROLES,
     OperatorError,
     add_user,
-    ensure_business_keeps_an_admin,
+    ensure_user_can_be_removed,
     find_user,
     get_business,
     grant_task_view,
@@ -38,7 +38,7 @@ from app.backend.accounts import (
     revoke_task_view,
     set_role,
     set_task_visibility,
-    task_oversight_warning,
+    transfer_leadership,
     validate_new_user,
 )
 from app.backend.businesses import (
@@ -174,17 +174,12 @@ def create_business(db: Session, args: argparse.Namespace) -> str:
 
     return (
         f"Created business {result.slug!r} (id {result.business_id}) "
-        f"with administrator {result.admin_email} (user id {result.admin_user_id})."
+        f"with leader {result.admin_email} (user id {result.admin_user_id})."
     )
 
 
 def visibility_text(sees_all: bool) -> str:
     return "sees all tasks" if sees_all else "sees own tasks"
-
-
-def with_oversight_warning(db: Session, slug: str, message: str) -> str:
-    warning = task_oversight_warning(db, slug)
-    return f"{message}\n{warning}" if warning else message
 
 
 def list_users_command(db: Session, args: argparse.Namespace) -> str:
@@ -193,16 +188,27 @@ def list_users_command(db: Session, args: argparse.Namespace) -> str:
     if not rows:
         return "No businesses."
 
-    return "\n".join(
+    lines = [
         f"{row.business_slug}  ({row.business_name})  "
         + (
-            f"user {row.user_id}  {row.email}  {row.role}  "
-            f"{'all tasks' if row.sees_all_tasks else 'own tasks'}"
+            f"user {row.user_id}  {row.email}  "
+            f"{'leader' if row.is_leader else row.role}  "
+            f"{'all tasks' if row.sees_all_tasks or row.is_leader else 'own tasks'}"
             if row.user_id is not None
             else "no users"
         )
         for row in rows
-    )
+    ]
+
+    # Possible only after an older image created or changed the business.
+    with_users = {row.business_slug for row in rows if row.user_id is not None}
+    with_leader = {row.business_slug for row in rows if row.is_leader}
+    lines += [
+        f"Warning: business {slug!r} has users but no leader; run transfer-leadership."
+        for slug in sorted(with_users - with_leader)
+    ]
+
+    return "\n".join(lines)
 
 
 def add_user_command(db: Session, args: argparse.Namespace) -> str:
@@ -222,7 +228,8 @@ def add_user_command(db: Session, args: argparse.Namespace) -> str:
 
     return (
         f"Added {user.role} {user.email} (user id {user.id}) "
-        f"to business {args.business.strip()!r}."
+        f"to business {args.business.strip()!r}"
+        + (" as its leader." if user.is_leader else ".")
     )
 
 
@@ -250,17 +257,16 @@ def set_role_command(db: Session, args: argparse.Namespace) -> str:
     if previous == args.role:
         return f"{args.email.strip()} is already {args.role}; nothing changed."
 
-    message = (
+    return (
         f"Changed {args.email.strip()} from {previous} to {args.role}; "
         f"now {visibility_text(args.role == ROLE_ADMIN)}."
     )
-    return with_oversight_warning(db, args.business, message)
 
 
 def remove_user_command(db: Session, args: argparse.Namespace) -> str:
     user = find_user(db, business_slug=args.business, email=args.email)
     # Checked before asking, so the operator never confirms a refused removal.
-    ensure_business_keeps_an_admin(db, user, removing=True)
+    ensure_user_can_be_removed(db, user)
     email = user.email
     task_count = len(user.tasks)
     end_read_transaction(db)
@@ -272,11 +278,10 @@ def remove_user_command(db: Session, args: argparse.Namespace) -> str:
 
     deleted_tasks = remove_user(db, business_slug=args.business, email=email)
 
-    message = (
+    return (
         f"Removed {email} from business {args.business.strip()!r} "
         f"and deleted {deleted_tasks} tasks."
     )
-    return with_oversight_warning(db, args.business, message)
 
 
 def set_task_visibility_command(db: Session, args: argparse.Namespace) -> str:
@@ -288,8 +293,13 @@ def set_task_visibility_command(db: Session, args: argparse.Namespace) -> str:
         db, business_slug=args.business, email=args.email, sees_all=sees_all
     )
 
-    message = f"{args.email.strip()} now {visibility_text(sees_all)}."
-    return with_oversight_warning(db, args.business, message)
+    return f"{args.email.strip()} now {visibility_text(sees_all)}."
+
+
+def transfer_leadership_command(db: Session, args: argparse.Namespace) -> str:
+    previous = transfer_leadership(db, business_slug=args.business, email=args.to)
+    message = f"{args.to.strip()} is now the leader of {args.business.strip()!r}"
+    return f"{message}; {previous} remains an admin." if previous else f"{message}."
 
 
 def grant_task_view_command(db: Session, args: argparse.Namespace) -> str:
@@ -404,6 +414,10 @@ MENU: list[tuple[str, Handler, list[tuple[str, str, bool]]]] = [
         ("business", "Business slug", True),
         ("email", "Email", True),
         ("role", "New role (admin/member)", True),
+    ]),
+    ("Transfer leadership", transfer_leadership_command, [
+        ("business", "Business slug", True),
+        ("to", "New leader email (an admin)", True),
     ]),
     ("Change task visibility", set_task_visibility_command, [
         ("business", "Business slug", True),
@@ -528,6 +542,14 @@ def build_parser() -> argparse.ArgumentParser:
     role = user_command("set-role", "Promote or demote a user.")
     role.add_argument("--role", required=True, choices=ROLES)
     role.set_defaults(handler=set_role_command)
+
+    transfer = commands.add_parser(
+        "transfer-leadership",
+        help="Make an admin the business's leader; the previous leader stays an admin.",
+    )
+    transfer.add_argument("--business", required=True, help="Business slug.")
+    transfer.add_argument("--to", required=True, help="Email of the new leader (an admin).")
+    transfer.set_defaults(handler=transfer_leadership_command)
 
     visibility = user_command("set-task-visibility", "Choose which tasks a user sees.")
     choice = visibility.add_mutually_exclusive_group(required=True)

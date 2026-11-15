@@ -76,6 +76,7 @@ def test_creates_business_and_admin(
 
     output = capsys.readouterr()
     assert "cohen-plumbing" in output.out
+    assert "with leader dana@cohen.example" in output.out
     # Command output may end up in terminal scrollback or session logs.
     assert PASSWORD not in output.out + output.err
 
@@ -84,6 +85,7 @@ def test_creates_business_and_admin(
     )
     assert admin.role == ROLE_ADMIN
     assert admin.business.slug == "cohen-plumbing"
+    assert admin.is_leader
 
 
 def test_mismatched_passwords_create_nothing(
@@ -179,8 +181,11 @@ def test_add_user_creates_user_who_can_log_in(
     capsys: pytest.CaptureFixture[str],
     client: TestClient,
     db_session: Session,
-    test_business: Business,
+    user_factory,
 ) -> None:
+    # A leader first: the first user of an empty business must be an admin.
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+
     exit_code = run_cli(
         monkeypatch,
         db_session,
@@ -315,7 +320,7 @@ def test_refused_removal_is_reported_before_asking_for_confirmation(
     )
 
     assert exit_code == 1
-    assert "only admin" in capsys.readouterr().err
+    assert "is the leader of 'test-business'" in capsys.readouterr().err
 
 
 # What Backspace on a Hebrew letter leaves behind: half of the letter's UTF-8 bytes.
@@ -347,8 +352,10 @@ def test_unreadable_password_is_rejected_cleanly(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
-    test_business: Business,
+    user_factory,
 ) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+
     # The real getpass decodes strictly: a leftover byte raises while reading
     # instead of being returned, which is what this stand-in reproduces.
     def leftover_byte(prompt: str) -> str:
@@ -396,8 +403,10 @@ def test_ctrl_c_at_a_prompt_cancels_without_traceback(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
-    test_business: Business,
+    user_factory,
 ) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+
     def interrupt(prompt: str) -> str:
         raise KeyboardInterrupt
 
@@ -486,8 +495,9 @@ def test_utf8_line_editing_is_on_during_a_command_and_restored_after(
     monkeypatch: pytest.MonkeyPatch,
     db_session: Session,
     fake_termios: FakeTermios,
-    test_business: Business,
+    user_factory,
 ) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
     seen_during_command = []
     monkeypatch.setattr(sys, "stdin", FakeTerminal(True))
     monkeypatch.setattr(
@@ -667,26 +677,25 @@ def test_remove_user_refuses_without_interactive_terminal(
     assert db_session.get(User, avi_id) is not None
 
 
-def test_set_task_visibility_reports_change_and_oversight_warning(
+def test_set_task_visibility_reports_the_change(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
     user_factory,
 ) -> None:
     user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("eli@example.com", role=ROLE_ADMIN)
 
     exit_code = run_cli(
         monkeypatch,
         db_session,
-        user_args("set-task-visibility", "dana@example.com", "--own"),
+        user_args("set-task-visibility", "eli@example.com", "--own"),
         [],
         interactive=False,
     )
 
     assert exit_code == 0
-    output = capsys.readouterr().out
-    assert "dana@example.com now sees own tasks." in output
-    assert "Warning: no admin in 'test-business' sees all tasks" in output
+    assert "eli@example.com now sees own tasks." in capsys.readouterr().out
 
 
 def test_list_users_and_set_role_show_task_visibility(
@@ -696,6 +705,7 @@ def test_list_users_and_set_role_show_task_visibility(
     user_factory,
 ) -> None:
     user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("eli@example.com", role=ROLE_ADMIN)
     user_factory("avi@example.com")
 
     run_cli(
@@ -706,7 +716,8 @@ def test_list_users_and_set_role_show_task_visibility(
         interactive=False,
     )
     listing = capsys.readouterr().out
-    assert "dana@example.com  admin  all tasks" in listing
+    assert "dana@example.com  leader  all tasks" in listing
+    assert "eli@example.com  admin  all tasks" in listing
     assert "avi@example.com  member  own tasks" in listing
 
     run_cli(
@@ -817,3 +828,67 @@ def test_grant_to_the_same_user_is_refused(
 
     assert exit_code == 1
     assert "always sees their own tasks" in capsys.readouterr().err
+
+
+def test_transfer_leadership_names_both_users(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("avi@example.com", role=ROLE_ADMIN)
+
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        ["transfer-leadership", "--business", "test-business", "--to", "avi@example.com"],
+        [],
+        interactive=False,
+    )
+
+    assert exit_code == 0
+    assert (
+        "avi@example.com is now the leader of 'test-business'; "
+        "dana@example.com remains an admin."
+    ) in capsys.readouterr().out
+
+
+def test_first_admin_of_an_empty_business_is_added_as_its_leader(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    test_business: Business,
+) -> None:
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        user_args("add-user", "dana@example.com", "--role", "admin"),
+        [PASSWORD, PASSWORD],
+    )
+
+    assert exit_code == 0
+    assert "to business 'test-business' as its leader." in capsys.readouterr().out
+
+
+def test_list_users_warns_about_users_without_a_leader(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    # Created directly, as an image from before the leader migration could.
+    user_factory("avi@example.com")
+
+    run_cli(
+        monkeypatch,
+        db_session,
+        ["list-users", "--business", "test-business"],
+        [],
+        interactive=False,
+    )
+
+    assert (
+        "Warning: business 'test-business' has users but no leader; "
+        "run transfer-leadership."
+    ) in capsys.readouterr().out

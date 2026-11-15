@@ -18,9 +18,20 @@ class Business(Base):
             "slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'",
             name="ck_businesses_slug_format",
         ),
+        # The leader is one of the business's own users, and cannot be deleted
+        # while recorded here. use_alter: users and businesses point at each other,
+        # so this key is created after both tables.
+        ForeignKeyConstraint(
+            ["id", "leader_user_id"],
+            ["users.business_id", "users.id"],
+            name="fk_businesses_id_leader_user_id_users",
+            use_alter=True,
+        ),
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Explicit: id is also part of the leader foreign key,
+    # which would otherwise stop SQLAlchemy from letting the database generate it.
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
     # Display name; may be Hebrew.
     name: Mapped[str] = mapped_column(
@@ -39,11 +50,15 @@ class Business(Base):
         server_default=func.now(),
     )
 
+    # Empty only while the business has no users.
+    leader_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Do not delete or detach users when deleting a business.
     # Let the database reject the deletion if users remain.
     users: Mapped[list["User"]] = relationship(
         back_populates="business",
         passive_deletes="all",
+        foreign_keys="User.business_id",
     )
 
 
@@ -132,6 +147,7 @@ class User(Base):
 
     business: Mapped["Business"] = relationship(
         back_populates="users",
+        foreign_keys=[business_id],
     )
 
     # Missing roles default to the lowest permission, which keeps older
@@ -154,6 +170,10 @@ class User(Base):
         cascade="all, delete-orphan",
         foreign_keys="Task.owner_id",
     )
+
+    @property
+    def is_leader(self) -> bool:
+        return self.business.leader_user_id == self.id
 
 
 PERMISSION_VIEW = "view"

@@ -94,15 +94,21 @@ def user_factory(db_session: Session, test_business: Business):
         if sees_all_tasks is None:
             sees_all_tasks = role == ROLE_ADMIN
 
+        business = business or test_business
         user = User(
             email=email,
             hashed_password=hash_password(password),
-            business=business or test_business,
+            business=business,
             role=role,
             sees_all_tasks=sees_all_tasks,
         )
         db_session.add(user)
         db_session.flush()
+
+        # Like onboarding and add-user: the first admin leads the business.
+        if role == ROLE_ADMIN and business.leader_user_id is None:
+            business.leader_user_id = user.id
+            db_session.flush()
 
         return user
 

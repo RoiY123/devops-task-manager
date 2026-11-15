@@ -45,6 +45,8 @@ def test_admin_sees_every_task_in_the_business(
 def test_admin_limited_to_own_tasks_sees_only_them(
     client: TestClient, auth_headers_factory
 ) -> None:
+    # The leader always sees everything, so the restricted admin is a second one.
+    auth_headers_factory("boss@example.com", role=ROLE_ADMIN)
     avi = auth_headers_factory("avi@example.com")
     dana = auth_headers_factory(
         "dana@example.com", role=ROLE_ADMIN, sees_all_tasks=False
@@ -54,6 +56,20 @@ def test_admin_limited_to_own_tasks_sees_only_them(
 
     assert titles(client, dana) == {"Dana's task"}
     assert client.get(f"/tasks/{avi_task['id']}", headers=dana).status_code == 404
+
+
+def test_leader_sees_and_changes_every_task_whatever_the_setting(
+    client: TestClient, auth_headers_factory
+) -> None:
+    # sees_all_tasks off for the leader:
+    # what an image from before the leader migration could set.
+    # The leader must still see and manage every task.
+    dana = auth_headers_factory("dana@example.com", role=ROLE_ADMIN, sees_all_tasks=False)
+    avi = auth_headers_factory("avi@example.com")
+    url = f"/tasks/{create_task(client, avi, 'Avi task')['id']}"
+
+    assert titles(client, dana) == {"Avi task"}
+    assert client.patch(url, json={"completed": True}, headers=dana).status_code == 200
 
 
 def test_member_who_sees_all_can_view_but_not_change_others_tasks(
