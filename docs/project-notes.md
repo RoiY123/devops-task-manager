@@ -112,9 +112,10 @@ Completed:
 - Manual deployment trigger for `main` with one deployment at a time
 - Per-user task visibility (admins see all tasks by default, members their own; operator-adjustable), with tasks tied to their owner's business by a database constraint
 - View-only task grants between users, managed by the operator
+- A business leader: exactly one per business, always sees and changes every task, transferable by the operator
 
 Current milestone:
-- Admin user management through the API, including a business owner role above admin
+- Business roles and user management through the API
 
 Next milestone:
 - TBD
@@ -315,7 +316,7 @@ Serve multiple independent businesses from one application and database. Every u
 
 Businesses and their first administrators are created by the operator with a command run over SSM; there is no public registration. Users who existed before tenancy were kept in a `legacy` business.
 
-The operator manages users in every business (add, reset password, change role, remove) and businesses themselves (rename the display name, delete when empty) only through the same CLI over SSM, never through web endpoints, so these powers stay behind AWS access. An interactive menu in the same CLI offers the same actions; it adds no access path. Commands that take a password or confirm a deletion refuse to run without an interactive terminal. A business that has users must keep at least one admin.
+The operator manages users in every business (add, reset password, change role, remove) and businesses themselves (rename the display name, delete when empty) only through the same CLI over SSM, never through web endpoints, so these powers stay behind AWS access. An interactive menu in the same CLI offers the same actions; it adds no access path. Commands that take a password or confirm a deletion refuse to run without an interactive terminal. A business that has users has exactly one leader (see Business Leader).
 
 Status:
 Accepted
@@ -328,9 +329,22 @@ Decision:
 
 Task visibility is set per user, not fixed by role. New admins default to seeing every task in their business and members to only their own, and a role change applies the new role's default. The operator adjusts it through the CLI over SSM until admins can manage it through the API.
 
-Seeing a task does not allow changing it: only its owner and admins who can see it may change or delete it. A task the user cannot see returns `404`, so its existence is not revealed; a visible task the user may not change returns `403`. The CLI warns, without blocking, when no admin in a business sees all tasks, because tasks could then become impossible to manage.
+Seeing a task does not allow changing it: only its owner, admins who can see it, and the leader may change or delete it. A task the user cannot see returns `404`, so its existence is not revealed; a visible task the user may not change returns `403`.
 
 A grant lets a viewer see every task of a chosen owner in the same business, view only. Grants are one-way, kept within one business by the database, and removed together with either user. Each grant records its permission, so allowing editing later extends the permission rather than redesigning grants.
+
+Status:
+Accepted
+
+---
+
+### Business Leader
+
+Decision:
+
+Each business with users has exactly one leader, an admin recorded on the business (`businesses.leader_user_id`) rather than a separate role value. One column makes a second leader impossible, a composite foreign key keeps the leader inside the business and refuses deleting them, and versions that predate the leader still treat them as an admin.
+
+The leader always sees and can change every task, so tasks cannot become unmanageable. The leader cannot be demoted or restricted. Leadership moves only by transfer to an admin, and the previous leader stays an admin. The leader can be removed only as the business's last user, so a business is deleted by removing its other users, then the leader, then the empty business. The first user of an empty business becomes its leader and must be an admin.
 
 Status:
 Accepted
