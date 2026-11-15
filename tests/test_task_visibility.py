@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.backend.accounts import grant_task_view, revoke_task_view
 from app.backend.models import ROLE_ADMIN, Business, Task
 
 
@@ -108,3 +109,47 @@ def test_new_task_records_its_owners_business(
     task_id = create_task(client, avi, "Avi's task")["id"]
 
     assert db_session.get(Task, task_id).business_id == test_business.id
+
+
+def grant(db: Session, viewer: str, owner: str) -> None:
+    grant_task_view(
+        db, business_slug="test-business", viewer_email=viewer, owner_email=owner
+    )
+
+
+def test_granted_viewer_sees_owners_tasks_but_cannot_change_them(
+    client: TestClient, db_session: Session, auth_headers_factory
+) -> None:
+    avi = auth_headers_factory("avi@example.com")
+    noa = auth_headers_factory("noa@example.com")
+    eli = auth_headers_factory("eli@example.com")
+    avi_url = f"/tasks/{create_task(client, avi, 'Avi task')['id']}"
+    eli_url = f"/tasks/{create_task(client, eli, 'Eli task')['id']}"
+
+    grant(db_session, "noa@example.com", "avi@example.com")
+
+    assert titles(client, noa) == {"Avi task"}
+    assert client.get(avi_url, headers=noa).status_code == 200
+    assert client.patch(avi_url, json={"completed": True}, headers=noa).status_code == 403
+    assert client.get(eli_url, headers=noa).status_code == 404
+    # A grant is one-way: Avi still sees only his own tasks.
+    assert titles(client, avi) == {"Avi task"}
+
+
+def test_revoked_grant_hides_the_tasks_again(
+    client: TestClient, db_session: Session, auth_headers_factory
+) -> None:
+    avi = auth_headers_factory("avi@example.com")
+    noa = auth_headers_factory("noa@example.com")
+    avi_url = f"/tasks/{create_task(client, avi, 'Avi task')['id']}"
+    grant(db_session, "noa@example.com", "avi@example.com")
+
+    revoke_task_view(
+        db_session,
+        business_slug="test-business",
+        viewer_email="noa@example.com",
+        owner_email="avi@example.com",
+    )
+
+    assert titles(client, noa) == set()
+    assert client.get(avi_url, headers=noa).status_code == 404

@@ -187,6 +187,24 @@ A role change also applies that role's default task visibility: admins see all t
 
 Expected: `USER_EMAIL now sees all tasks.` If no admin in the business sees all tasks afterwards, a warning follows. The change is still saved, but a task can then only be changed by someone who can see it. Give at least one admin `--all`.
 
+**Let a user see another user's tasks.** A grant lets the viewer see every task of the owner, view only: the viewer cannot change or delete them. Grants are one-way and stay within the business. Application instance; one command at a time:
+
+```bash
+./scripts/operator.sh grant-task-view \
+  --business BUSINESS_SLUG --viewer VIEWER_EMAIL --owner OWNER_EMAIL
+```
+
+```bash
+./scripts/operator.sh revoke-task-view \
+  --business BUSINESS_SLUG --viewer VIEWER_EMAIL --owner OWNER_EMAIL
+```
+
+```bash
+./scripts/operator.sh list-task-grants --business BUSINESS_SLUG
+```
+
+Expected: `VIEWER_EMAIL now sees the tasks of OWNER_EMAIL (view only).`, `VIEWER_EMAIL no longer sees the tasks of OWNER_EMAIL.`, or one line per grant. Repeating a grant or revoking a missing one changes nothing. A grant has no effect while the viewer sees all tasks. Removing either user deletes their grants.
+
 **Remove a user.** Permanently deletes the user and all their tasks; their existing logins stop working immediately. Application instance; one command. It shows how many tasks will be deleted, then asks you to type the email again:
 
 ```bash

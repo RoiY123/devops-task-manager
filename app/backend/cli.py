@@ -30,9 +30,12 @@ from app.backend.accounts import (
     ensure_business_keeps_an_admin,
     find_user,
     get_business,
+    grant_task_view,
+    list_task_grants,
     list_users,
     remove_user,
     reset_password,
+    revoke_task_view,
     set_role,
     set_task_visibility,
     task_oversight_warning,
@@ -289,6 +292,47 @@ def set_task_visibility_command(db: Session, args: argparse.Namespace) -> str:
     return with_oversight_warning(db, args.business, message)
 
 
+def grant_task_view_command(db: Session, args: argparse.Namespace) -> str:
+    result = grant_task_view(
+        db, business_slug=args.business, viewer_email=args.viewer, owner_email=args.owner
+    )
+    viewer, owner = args.viewer.strip(), args.owner.strip()
+
+    if result.created:
+        message = f"{viewer} now sees the tasks of {owner} (view only)."
+    else:
+        message = f"{viewer} already sees the tasks of {owner}; nothing changed."
+
+    if result.viewer_sees_all:
+        message += (
+            f"\nNote: {viewer} already sees all tasks; "
+            "the grant matters if their visibility changes to own."
+        )
+    return message
+
+
+def revoke_task_view_command(db: Session, args: argparse.Namespace) -> str:
+    viewer, owner = args.viewer.strip(), args.owner.strip()
+
+    if revoke_task_view(
+        db, business_slug=args.business, viewer_email=viewer, owner_email=owner
+    ):
+        return f"{viewer} no longer sees the tasks of {owner}."
+    return f"{viewer} had no grant for the tasks of {owner}; nothing changed."
+
+
+def list_task_grants_command(db: Session, args: argparse.Namespace) -> str:
+    rows = list_task_grants(db, args.business)
+
+    if not rows:
+        return f"No task grants in business {args.business.strip()!r}."
+
+    return "\n".join(
+        f"{row.viewer_email}  sees tasks of  {row.owner_email}  ({row.permission})"
+        for row in rows
+    )
+
+
 def rename_business_command(db: Session, args: argparse.Namespace) -> str:
     previous = rename_business(db, slug=args.slug, name=args.name)
     business = get_business(db, args.slug)
@@ -321,19 +365,36 @@ Handler = Callable[[Session, argparse.Namespace], str]
 # Each entry calls the same handler as its command,
 # so the menu inherits every check, prompt and confirmation.
 # Fields: (argument, question, required).
+GRANT_FIELDS = [
+    ("business", "Business slug", True),
+    ("viewer", "Viewer email (sees the tasks)", True),
+    ("owner", "Owner email (whose tasks are shown)", True),
+]
+
 MENU: list[tuple[str, Handler, list[tuple[str, str, bool]]]] = [
+    ("List users", list_users_command, [
+        ("business", "Business slug (Enter for all)", False),
+    ]),
     ("Create business", create_business, [
         ("name", "Business display name", True),
         ("slug", "Business slug", True),
         ("admin_email", "Admin email", True),
     ]),
-    ("List users", list_users_command, [
-        ("business", "Business slug (Enter for all)", False),
+    ("Rename business", rename_business_command, [
+        ("slug", "Business slug", True),
+        ("name", "New display name", True),
+    ]),
+    ("Delete business", delete_business_command, [
+        ("slug", "Business slug", True),
     ]),
     ("Add user", add_user_command, [
         ("business", "Business slug", True),
         ("email", "Email", True),
         ("role", "Role (admin/member)", True),
+    ]),
+    ("Remove user", remove_user_command, [
+        ("business", "Business slug", True),
+        ("email", "Email", True),
     ]),
     ("Reset password", reset_password_command, [
         ("business", "Business slug", True),
@@ -349,16 +410,10 @@ MENU: list[tuple[str, Handler, list[tuple[str, str, bool]]]] = [
         ("email", "Email", True),
         ("visibility", "Visibility (all/own)", True),
     ]),
-    ("Remove user", remove_user_command, [
+    ("Grant task view", grant_task_view_command, GRANT_FIELDS),
+    ("Revoke task view", revoke_task_view_command, GRANT_FIELDS),
+    ("List task grants", list_task_grants_command, [
         ("business", "Business slug", True),
-        ("email", "Email", True),
-    ]),
-    ("Rename business", rename_business_command, [
-        ("slug", "Business slug", True),
-        ("name", "New display name", True),
-    ]),
-    ("Delete business", delete_business_command, [
-        ("slug", "Business slug", True),
     ]),
 ]
 
@@ -488,6 +543,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     remove = user_command("remove-user", "Delete a user and their tasks.")
     remove.set_defaults(handler=remove_user_command)
+
+    # A grant names two users, so these take --viewer and --owner instead of --email.
+    def grant_command(name: str, help_text: str) -> argparse.ArgumentParser:
+        command = commands.add_parser(name, help=help_text)
+        command.add_argument("--business", required=True, help="Business slug.")
+        command.add_argument("--viewer", required=True, help="Email of who sees the tasks.")
+        command.add_argument("--owner", required=True, help="Email of whose tasks are shown.")
+        return command
+
+    grant = grant_command("grant-task-view", "Let a user see all tasks of another user.")
+    grant.set_defaults(handler=grant_task_view_command)
+
+    revoke = grant_command("revoke-task-view", "Remove a task view grant.")
+    revoke.set_defaults(handler=revoke_task_view_command)
+
+    grants = commands.add_parser(
+        "list-task-grants",
+        help="List a business's task view grants (read-only).",
+    )
+    grants.add_argument("--business", required=True, help="Business slug.")
+    grants.set_defaults(handler=list_task_grants_command)
 
     # The slug is not renamable: it will become the business's login URL.
     rename = commands.add_parser(

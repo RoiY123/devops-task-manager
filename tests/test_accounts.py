@@ -6,9 +6,12 @@ from sqlalchemy.orm import Session
 from app.backend.accounts import (
     OperatorError,
     add_user,
+    grant_task_view,
+    list_task_grants,
     list_users,
     remove_user,
     reset_password,
+    revoke_task_view,
     set_role,
     set_task_visibility,
     task_oversight_warning,
@@ -173,9 +176,9 @@ def test_remove_user_deletes_the_user_and_only_their_tasks(
     noa = user_factory("noa@example.com")
     db_session.add_all(
         [
-            Task(title="Avi 1", owner=avi),
-            Task(title="Avi 2", owner=avi),
-            Task(title="Noa 1", owner=noa),
+            Task(title="Avi 1", owner=avi, business_id=avi.business_id),
+            Task(title="Avi 2", owner=avi, business_id=avi.business_id),
+            Task(title="Noa 1", owner=noa, business_id=noa.business_id),
         ]
     )
     db_session.flush()
@@ -364,3 +367,85 @@ def test_oversight_warning_only_when_no_admin_sees_all_tasks(
     assert "no admin in 'test-business' sees all tasks" in task_oversight_warning(
         db_session, SLUG
     )
+
+
+def grants(db: Session) -> list[tuple[str, str, str]]:
+    return [
+        (row.viewer_email, row.owner_email, row.permission)
+        for row in list_task_grants(db, SLUG)
+    ]
+
+
+def grant(db: Session, viewer: str, owner: str):
+    return grant_task_view(
+        db, business_slug=SLUG, viewer_email=viewer, owner_email=owner
+    )
+
+
+def test_grant_is_listed_and_repeating_it_changes_nothing(
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com")
+    user_factory("noa@example.com")
+
+    assert grant(db_session, "noa@example.com", "avi@example.com").created is True
+    assert grant(db_session, "noa@example.com", "avi@example.com").created is False
+    assert grants(db_session) == [("noa@example.com", "avi@example.com", "view")]
+
+
+def test_revoke_removes_the_grant_and_reports_a_missing_one(
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com")
+    user_factory("noa@example.com")
+    grant(db_session, "noa@example.com", "avi@example.com")
+    pair = {
+        "business_slug": SLUG,
+        "viewer_email": "noa@example.com",
+        "owner_email": "avi@example.com",
+    }
+
+    assert revoke_task_view(db_session, **pair) is True
+    assert revoke_task_view(db_session, **pair) is False
+    assert grants(db_session) == []
+
+
+def test_grant_refuses_the_same_user_and_users_of_another_business(
+    db_session: Session,
+    user_factory,
+    other_business: Business,
+) -> None:
+    user_factory("avi@example.com")
+    user_factory("boss@other.example", business=other_business)
+
+    with pytest.raises(OperatorError, match="always sees their own tasks"):
+        grant(db_session, "avi@example.com", "Avi@Example.com")
+    with pytest.raises(OperatorError, match="No user 'boss@other.example' in business"):
+        grant(db_session, "boss@other.example", "avi@example.com")
+
+
+def test_grant_notes_a_viewer_who_already_sees_all_tasks(
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("avi@example.com")
+
+    assert grant(db_session, "dana@example.com", "avi@example.com").viewer_sees_all is True
+
+
+def test_removing_a_user_removes_their_grants_as_viewer_and_owner(
+    db_session: Session,
+    user_factory,
+) -> None:
+    for email in ["avi@example.com", "noa@example.com", "eli@example.com"]:
+        user_factory(email)
+    # Avi is the viewer in one grant and the owner in the other.
+    grant(db_session, "avi@example.com", "noa@example.com")
+    grant(db_session, "eli@example.com", "avi@example.com")
+
+    remove_user(db_session, business_slug=SLUG, email="avi@example.com")
+
+    assert grants(db_session) == []

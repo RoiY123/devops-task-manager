@@ -4,9 +4,16 @@ from dataclasses import dataclass
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
-from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, User
+from app.backend.models import (
+    PERMISSION_VIEW,
+    ROLE_ADMIN,
+    ROLE_MEMBER,
+    Business,
+    TaskGrant,
+    User,
+)
 from app.backend.security import hash_password
 
 
@@ -278,6 +285,85 @@ def task_oversight_warning(db: Session, business_slug: str) -> str | None:
         f"Warning: no admin in {business.slug!r} sees all tasks, so a task "
         "can only be changed by someone who can see it."
     )
+
+
+@dataclass(frozen=True)
+class GrantResult:
+    created: bool
+    # A grant adds nothing while the viewer sees all tasks; the CLI says so.
+    viewer_sees_all: bool
+
+
+@dataclass(frozen=True)
+class GrantListing:
+    viewer_email: str
+    owner_email: str
+    permission: str
+
+
+def find_grant_users(
+    db: Session, *, business_slug: str, viewer_email: str, owner_email: str
+) -> tuple[User, User]:
+    viewer = find_user(db, business_slug=business_slug, email=viewer_email)
+    owner = find_user(db, business_slug=business_slug, email=owner_email)
+
+    if viewer.id == owner.id:
+        raise OperatorError("A user always sees their own tasks; choose two different users")
+
+    return viewer, owner
+
+
+def grant_task_view(
+    db: Session, *, business_slug: str, viewer_email: str, owner_email: str
+) -> GrantResult:
+    """Let the viewer see every task of the owner; repeating it changes nothing."""
+    viewer, owner = find_grant_users(
+        db, business_slug=business_slug, viewer_email=viewer_email, owner_email=owner_email
+    )
+    created = db.get(TaskGrant, (viewer.id, owner.id)) is None
+
+    if created:
+        db.add(
+            TaskGrant(
+                viewer_id=viewer.id,
+                owner_id=owner.id,
+                business_id=viewer.business_id,
+                permission=PERMISSION_VIEW,
+            )
+        )
+        db.commit()
+
+    return GrantResult(created=created, viewer_sees_all=viewer.sees_all_tasks)
+
+
+def revoke_task_view(
+    db: Session, *, business_slug: str, viewer_email: str, owner_email: str
+) -> bool:
+    """Remove the grant; return False if there was none."""
+    viewer, owner = find_grant_users(
+        db, business_slug=business_slug, viewer_email=viewer_email, owner_email=owner_email
+    )
+    grant = db.get(TaskGrant, (viewer.id, owner.id))
+
+    if grant is None:
+        return False
+
+    db.delete(grant)
+    db.commit()
+    return True
+
+
+def list_task_grants(db: Session, business_slug: str) -> list[GrantListing]:
+    business = get_business(db, business_slug)
+    viewer, owner = aliased(User), aliased(User)
+    query = (
+        select(viewer.email, owner.email, TaskGrant.permission)
+        .join(viewer, viewer.id == TaskGrant.viewer_id)
+        .join(owner, owner.id == TaskGrant.owner_id)
+        .where(TaskGrant.business_id == business.id)
+        .order_by(viewer.email, owner.email)
+    )
+    return [GrantListing(*row) for row in db.execute(query)]
 
 
 def remove_user(db: Session, *, business_slug: str, email: str) -> int:

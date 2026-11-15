@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKeyConstraint, Index, Integer, String, ForeignKey, UniqueConstraint, false, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, ForeignKey, UniqueConstraint, false, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -153,6 +153,44 @@ class User(Base):
         back_populates="owner",
         cascade="all, delete-orphan",
         foreign_keys="Task.owner_id",
+    )
+
+
+PERMISSION_VIEW = "view"
+
+
+class TaskGrant(Base):
+    """The viewer may see every task of the owner; both are in one business."""
+
+    __tablename__ = "task_grants"
+
+    __table_args__ = (
+        # One grant per pair; a later 'edit' permission changes the row, not adds one.
+        PrimaryKeyConstraint("viewer_id", "owner_id", name="pk_task_grants"),
+        # Both users must belong to the grant's business, so grants never cross businesses.
+        # Removing either user removes the grant with them.
+        ForeignKeyConstraint(
+            ["business_id", "viewer_id"],
+            ["users.business_id", "users.id"],
+            name="fk_task_grants_business_id_viewer_id_users",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["business_id", "owner_id"],
+            ["users.business_id", "users.id"],
+            name="fk_task_grants_business_id_owner_id_users",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("viewer_id <> owner_id", name="ck_task_grants_not_self"),
+        CheckConstraint("permission IN ('view')", name="ck_task_grants_permission"),
+    )
+
+    viewer_id: Mapped[int] = mapped_column(Integer)
+    # Indexed so removing an owner finds their grants quickly.
+    owner_id: Mapped[int] = mapped_column(Integer, index=True)
+    business_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    permission: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=PERMISSION_VIEW
     )
 
 
