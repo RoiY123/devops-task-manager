@@ -118,7 +118,7 @@ Choose a number and answer the questions. A blank answer cancels the current act
 
 ### Onboard a business
 
-Creates a business and its first administrator.
+Creates a business and its first administrator, who becomes the business's leader.
 
 Application instance; one command. It prompts twice for the administrator password; type or paste only the password at each prompt:
 
@@ -133,7 +133,7 @@ Application instance; one command. It prompts twice for the administrator passwo
 - `--slug`: part of the business login URL. Lowercase letters, digits and single hyphens, at most 63 characters. Choose it carefully: slugs cannot be renamed. Before a business goes live, an empty business can be deleted and onboarded again.
 - Password: at least 12 characters; the prompt does not display it.
 
-Expected: `Created business 'BUSINESS_SLUG' (id …) with administrator ADMIN_EMAIL (user id …).`
+Expected: `Created business 'BUSINESS_SLUG' (id …) with leader ADMIN_EMAIL (user id …).`
 
 Send the password through a secure channel, separately from the login URL and email.
 
@@ -147,9 +147,13 @@ Read-only. Application instance; one command. Remove `--business BUSINESS_SLUG` 
 
 Each line shows the business slug, its name, and one user's id, email, role and task visibility (`all tasks` or `own tasks`), or `no users`. Terminals may display Hebrew names right-to-left reversed; the stored text is not affected.
 
+The leader's role is shown as `leader`. A `Warning: business … has users but no leader` line means an older version changed the business; fix it with `transfer-leadership`.
+
 ### Manage users
 
 The commands below name both the business and the email; a user in another business is not found.
+
+Each business with users has exactly one leader, an admin who always sees and can change every task. The leader cannot be demoted or restricted, and can be removed only as the business's last user; to replace the leader, transfer leadership.
 
 **Add a user.** Application instance; one command. It prompts twice for the new user's password (at least 12 characters). Use `--role admin` for an administrator:
 
@@ -159,6 +163,8 @@ The commands below name both the business and the email; a user in another busin
 ```
 
 An email already used in that business is refused, ignoring capitals. The same email may exist in another business as a separate account with its own password.
+
+In a business without users, the first user becomes its leader and must be added with `--role admin`.
 
 **Reset a password.** Application instance; one command. It prompts twice for the new password:
 
@@ -178,14 +184,23 @@ Logins made before the reset stay valid until their tokens expire (`ACCESS_TOKEN
 
 A role change also applies that role's default task visibility: admins see all tasks, members their own. Re-apply a custom setting afterwards with `set-task-visibility`.
 
-**Change task visibility.** Chooses whether a user sees every task in their business (`--all`) or only their own (`--own`). Seeing a task does not allow changing it: only its owner and admins who can see it can change or delete it. Application instance; one command:
+**Transfer leadership.** Makes an admin the business's leader; the previous leader stays an admin. To make a member the leader, promote them first. Application instance; one command:
+
+```bash
+./scripts/operator.sh transfer-leadership \
+  --business BUSINESS_SLUG --to ADMIN_EMAIL
+```
+
+Expected: `ADMIN_EMAIL is now the leader of 'BUSINESS_SLUG'; PREVIOUS_EMAIL remains an admin.` To undo, transfer it back.
+
+**Change task visibility.** Chooses whether a user sees every task in their business (`--all`) or only their own (`--own`). Seeing a task does not allow changing it: only its owner, admins who can see it, and the leader can change or delete it. Application instance; one command:
 
 ```bash
 ./scripts/operator.sh set-task-visibility \
   --business BUSINESS_SLUG --email USER_EMAIL --all
 ```
 
-Expected: `USER_EMAIL now sees all tasks.` If no admin in the business sees all tasks afterwards, a warning follows. The change is still saved, but a task can then only be changed by someone who can see it. Give at least one admin `--all`.
+Expected: `USER_EMAIL now sees all tasks.` The leader always sees all tasks, so changing the leader's visibility is refused.
 
 **Let a user see another user's tasks.** A grant lets the viewer see every task of the owner, view only: the viewer cannot change or delete them. Grants are one-way and stay within the business. Application instance; one command at a time:
 
@@ -212,7 +227,7 @@ Expected: `VIEWER_EMAIL now sees the tasks of OWNER_EMAIL (view only).`, `VIEWER
   --business BUSINESS_SLUG --email USER_EMAIL
 ```
 
-A business that has users must keep an admin: removing or demoting its only admin is refused while other users remain. Promote another user first. Removing the last user of a business is allowed.
+The leader cannot be removed while other users remain; transfer leadership first. Removing the last user, including the leader, is allowed and leaves the business empty.
 
 ### Manage businesses
 

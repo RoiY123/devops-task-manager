@@ -11,7 +11,7 @@ from app.backend.models import ROLE_ADMIN, Task, TaskGrant, User
 
 def visible_tasks(user: User) -> ColumnElement[bool]:
     """A filter matching the tasks the user may see."""
-    if user.sees_all_tasks:
+    if user.sees_all_tasks or user.is_leader:
         return Task.business_id == user.business_id
 
     granted_owners = select(TaskGrant.owner_id).where(TaskGrant.viewer_id == user.id)
@@ -35,8 +35,9 @@ def get_visible_task(db: Session, user: User, task_id: int) -> Task:
 
 
 def ensure_can_change(user: User, task: Task) -> None:
-    """Owners change their tasks; admins change any task they can see."""
-    if task.owner_id != user.id and user.role != ROLE_ADMIN:
+    """Owners change their tasks; admins and the leader change any task they can see."""
+    # is_leader as well: a leader demoted by an older image still manages every task.
+    if task.owner_id != user.id and user.role != ROLE_ADMIN and not user.is_leader:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not allowed to change this task",

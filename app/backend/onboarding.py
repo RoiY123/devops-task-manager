@@ -74,6 +74,9 @@ def create_business_with_admin(
     # One commit saves both rows or neither,
     # so a business never exists without its first administrator.
     try:
+        # The admin needs an id before the business can name them its leader.
+        db.flush()
+        business.leader_user_id = admin.id
         db.commit()
     except IntegrityError as error:
         db.rollback()

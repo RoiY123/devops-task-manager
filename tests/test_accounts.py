@@ -14,7 +14,7 @@ from app.backend.accounts import (
     revoke_task_view,
     set_role,
     set_task_visibility,
-    task_oversight_warning,
+    transfer_leadership,
 )
 from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, Task, User
 
@@ -47,7 +47,11 @@ def test_add_user_creates_member_who_can_log_in(
     client: TestClient,
     db_session: Session,
     test_business: Business,
+    user_factory,
 ) -> None:
+    # A leader first: the first user of an empty business must be an admin.
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+
     user = add_user(
         db_session,
         business_slug=SLUG,
@@ -78,10 +82,11 @@ ARROW_LEFT = chr(27) + "[D"
 )
 def test_add_user_rejects_invalid_input_and_saves_nothing(
     db_session: Session,
-    test_business: Business,
+    user_factory,
     overrides: dict[str, str],
     message: str,
 ) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
     data = {
         "business_slug": SLUG,
         "email": "avi@example.com",
@@ -102,6 +107,7 @@ def test_add_user_allows_an_email_used_in_another_business(
     other_business: Business,
 ) -> None:
     user_factory("avi@example.com")
+    user_factory("boss@other.example", role=ROLE_ADMIN, business=other_business)
 
     add_user(
         db_session,
@@ -209,32 +215,34 @@ def test_removed_users_existing_token_is_rejected(
     assert client.get("/tasks", headers=headers).status_code == 401
 
 
-def test_only_admin_cannot_be_removed_while_other_users_remain(
+def test_leader_cannot_be_removed_while_other_users_remain(
     db_session: Session,
     user_factory,
 ) -> None:
     user_factory("dana@example.com", role=ROLE_ADMIN)
     user_factory("avi@example.com")
 
-    with pytest.raises(OperatorError, match="only admin"):
+    with pytest.raises(OperatorError, match="is the leader of 'test-business'"):
         remove_user(db_session, business_slug=SLUG, email="dana@example.com")
 
     assert user_count(db_session, "dana@example.com") == 1
 
 
-def test_only_admin_can_be_removed_when_no_other_users_remain(
+def test_leader_can_be_removed_as_the_last_user(
     db_session: Session,
     user_factory,
+    test_business: Business,
 ) -> None:
     user_factory("dana@example.com", role=ROLE_ADMIN)
 
     remove_user(db_session, business_slug=SLUG, email="dana@example.com")
 
-    # The business is now empty, which is what deleting it will require.
+    # The business is now empty and leaderless, which deleting it requires.
     assert list_users(db_session, SLUG)[0].user_id is None
+    assert test_business.leader_user_id is None
 
 
-def test_admin_can_be_removed_when_another_admin_remains(
+def test_admin_who_is_not_the_leader_can_be_removed(
     db_session: Session,
     user_factory,
 ) -> None:
@@ -242,16 +250,16 @@ def test_admin_can_be_removed_when_another_admin_remains(
     user_factory("avi@example.com", role=ROLE_ADMIN)
     user_factory("noa@example.com")
 
-    remove_user(db_session, business_slug=SLUG, email="dana@example.com")
+    remove_user(db_session, business_slug=SLUG, email="avi@example.com")
 
-    assert user_count(db_session, "dana@example.com") == 0
+    assert user_count(db_session, "avi@example.com") == 0
 
 
 def test_set_role_promotes_and_demotes(
     db_session: Session,
     user_factory,
 ) -> None:
-    dana = user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("dana@example.com", role=ROLE_ADMIN)
     avi = user_factory("avi@example.com")
 
     assert set_role(
@@ -259,26 +267,27 @@ def test_set_role_promotes_and_demotes(
     ) == ROLE_MEMBER
     assert avi.role == ROLE_ADMIN
 
-    # Dana is no longer the only admin, so she can be demoted.
-    set_role(
-        db_session, business_slug=SLUG, email="dana@example.com", role=ROLE_MEMBER
-    )
-    assert dana.role == ROLE_MEMBER
+    set_role(db_session, business_slug=SLUG, email="avi@example.com", role=ROLE_MEMBER)
+    assert avi.role == ROLE_MEMBER
 
 
-def test_only_admin_cannot_be_demoted(
+def test_leader_cannot_be_demoted_or_restricted(
     db_session: Session,
     user_factory,
 ) -> None:
     dana = user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("avi@example.com", role=ROLE_ADMIN)
 
-    # Even as the only user: a business with users needs an admin.
-    with pytest.raises(OperatorError, match="only admin"):
+    with pytest.raises(OperatorError, match="transfer leadership first"):
         set_role(
             db_session, business_slug=SLUG, email="dana@example.com", role=ROLE_MEMBER
         )
+    with pytest.raises(OperatorError, match="the leader always sees all tasks"):
+        set_task_visibility(
+            db_session, business_slug=SLUG, email="dana@example.com", sees_all=False
+        )
 
-    assert dana.role == ROLE_ADMIN
+    assert (dana.role, dana.sees_all_tasks) == (ROLE_ADMIN, True)
 
 
 def test_list_users_shows_empty_businesses_and_filters_by_slug(
@@ -348,25 +357,6 @@ def test_role_change_applies_the_roles_default_visibility(
     )
     set_role(db_session, business_slug=SLUG, email="avi@example.com", role=ROLE_MEMBER)
     assert avi.sees_all_tasks is False
-
-
-def test_oversight_warning_only_when_no_admin_sees_all_tasks(
-    db_session: Session,
-    test_business: Business,
-    user_factory,
-) -> None:
-    # No users yet: nothing to oversee.
-    assert task_oversight_warning(db_session, SLUG) is None
-
-    user_factory("dana@example.com", role=ROLE_ADMIN)
-    assert task_oversight_warning(db_session, SLUG) is None
-
-    set_task_visibility(
-        db_session, business_slug=SLUG, email="dana@example.com", sees_all=False
-    )
-    assert "no admin in 'test-business' sees all tasks" in task_oversight_warning(
-        db_session, SLUG
-    )
 
 
 def grants(db: Session) -> list[tuple[str, str, str]]:
@@ -449,3 +439,82 @@ def test_removing_a_user_removes_their_grants_as_viewer_and_owner(
     remove_user(db_session, business_slug=SLUG, email="avi@example.com")
 
     assert grants(db_session) == []
+
+
+def test_first_user_of_an_empty_business_must_be_an_admin_and_leads_it(
+    db_session: Session,
+    test_business: Business,
+) -> None:
+    with pytest.raises(OperatorError, match="becomes its leader; use --role admin"):
+        add_user(
+            db_session,
+            business_slug=SLUG,
+            email="avi@example.com",
+            role=ROLE_MEMBER,
+            password=PASSWORD,
+        )
+
+    dana = add_user(
+        db_session,
+        business_slug=SLUG,
+        email="dana@example.com",
+        role=ROLE_ADMIN,
+        password=PASSWORD,
+    )
+
+    assert test_business.leader_user_id == dana.id
+
+
+def test_transfer_makes_an_admin_the_leader_and_keeps_the_previous_one_admin(
+    db_session: Session,
+    user_factory,
+    test_business: Business,
+) -> None:
+    dana = user_factory("dana@example.com", role=ROLE_ADMIN)
+    avi = user_factory("avi@example.com", role=ROLE_ADMIN)
+
+    previous = transfer_leadership(db_session, business_slug=SLUG, email="avi@example.com")
+
+    assert previous == "dana@example.com"
+    assert test_business.leader_user_id == avi.id
+    assert dana.role == ROLE_ADMIN
+
+
+@pytest.mark.parametrize(
+    ("email", "message"),
+    [
+        ("noa@example.com", "is a member; promote them to admin first"),
+        ("dana@example.com", "is already the leader"),
+        ("boss@other.example", "No user 'boss@other.example' in business"),
+    ],
+)
+def test_transfer_is_refused_for_a_member_the_leader_or_another_business(
+    db_session: Session,
+    user_factory,
+    other_business: Business,
+    test_business: Business,
+    email: str,
+    message: str,
+) -> None:
+    dana = user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("noa@example.com")
+    user_factory("boss@other.example", role=ROLE_ADMIN, business=other_business)
+
+    with pytest.raises(OperatorError, match=message):
+        transfer_leadership(db_session, business_slug=SLUG, email=email)
+
+    assert test_business.leader_user_id == dana.id
+
+
+def test_transfer_repairs_a_business_without_a_leader(
+    db_session: Session,
+    user_factory,
+    test_business: Business,
+) -> None:
+    dana = user_factory("dana@example.com", role=ROLE_ADMIN)
+    # What an image from before the leader migration could leave behind.
+    test_business.leader_user_id = None
+    db_session.flush()
+
+    assert transfer_leadership(db_session, business_slug=SLUG, email="dana@example.com") is None
+    assert test_business.leader_user_id == dana.id

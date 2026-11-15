@@ -78,8 +78,11 @@ def check_role(role: str) -> None:
         raise OperatorError(f"Role {role!r} is invalid: use {' or '.join(ROLES)}")
 
 
-def get_business(db: Session, slug: str) -> Business:
-    business = db.scalar(select(Business).where(Business.slug == slug.strip()))
+def get_business(db: Session, slug: str, *, lock: bool = False) -> Business:
+    query = select(Business).where(Business.slug == slug.strip())
+    # The lock makes concurrent leader changes on one business wait their turn,
+    # so none can leave it with no leader or a wrong one.
+    business = db.scalar(query.with_for_update() if lock else query)
 
     if business is None:
         raise OperatorError(f"No business with slug {slug.strip()!r}")
@@ -111,32 +114,20 @@ def find_user(db: Session, *, business_slug: str, email: str) -> User:
     return user
 
 
-def ensure_business_keeps_an_admin(
-    db: Session,
-    user: User,
-    *,
-    removing: bool,
-) -> None:
-    # Users without an admin could not be managed inside their business.
+def user_count(db: Session, business_id: int) -> int:
+    return db.scalar(
+        select(func.count()).select_from(User).where(User.business_id == business_id)
+    )
+
+
+def ensure_user_can_be_removed(db: Session, user: User) -> None:
+    # A business with users always has a leader, who is an admin.
     # An empty business is fine, so removing its last user is allowed.
-    if user.role != ROLE_ADMIN:
-        return
-
-    others = select(func.count()).select_from(User).where(
-        User.business_id == user.business_id,
-        User.id != user.id,
-    )
-
-    if db.scalar(others.where(User.role == ROLE_ADMIN)) > 0:
-        return
-
-    if removing and db.scalar(others) == 0:
-        return
-
-    raise OperatorError(
-        f"{user.email} is the only admin of {user.business.slug!r}; "
-        f"promote another user to admin first"
-    )
+    if user.is_leader and user_count(db, user.business_id) > 1:
+        raise OperatorError(
+            f"{user.email} is the leader of {user.business.slug!r}; "
+            "transfer leadership to an admin first"
+        )
 
 
 @dataclass(frozen=True)
@@ -148,11 +139,20 @@ class UserListing:
     email: str | None
     role: str | None
     sees_all_tasks: bool | None
+    is_leader: bool | None
 
 
 def list_users(db: Session, business_slug: str | None = None) -> list[UserListing]:
     query = (
-        select(Business.slug, Business.name, User.id, User.email, User.role, User.sees_all_tasks)
+        select(
+            Business.slug,
+            Business.name,
+            User.id,
+            User.email,
+            User.role,
+            User.sees_all_tasks,
+            Business.leader_user_id == User.id,
+        )
         .outerjoin(User, User.business_id == Business.id)
         .order_by(Business.slug, User.id)
     )
@@ -183,6 +183,11 @@ def validate_new_user(
     email = clean_email(email)
     ensure_email_is_free(db, email, business)
 
+    if role != ROLE_ADMIN and user_count(db, business.id) == 0:
+        raise OperatorError(
+            "The first user of an empty business becomes its leader; use --role admin"
+        )
+
     return NewUser(business_id=business.id, email=email, role=role)
 
 
@@ -194,10 +199,12 @@ def add_user(
     role: str,
     password: str,
 ) -> User:
+    business = get_business(db, business_slug, lock=True)
     # Validated again here: the email may have been taken
     # while the operator was typing the password.
     new = validate_new_user(db, business_slug=business_slug, email=email, role=role)
     check_password(password)
+    becomes_leader = business.leader_user_id is None and user_count(db, business.id) == 0
 
     user = User(
         email=new.email,
@@ -210,6 +217,11 @@ def add_user(
     db.add(user)
 
     try:
+        if becomes_leader:
+            # The user needs an id before the business can point at it;
+            # both changes are saved by the same commit.
+            db.flush()
+            business.leader_user_id = user.id
         db.commit()
     except IntegrityError as error:
         db.rollback()
@@ -250,8 +262,11 @@ def set_role(
     if previous == role:
         return previous
 
-    if previous == ROLE_ADMIN and role != ROLE_ADMIN:
-        ensure_business_keeps_an_admin(db, user, removing=False)
+    if user.is_leader:
+        raise OperatorError(
+            f"{user.email} is the leader of {user.business.slug!r}; "
+            "transfer leadership first"
+        )
 
     user.role = role
     # A role change applies that role's default; set-task-visibility adjusts it.
@@ -265,26 +280,33 @@ def set_task_visibility(
     db: Session, *, business_slug: str, email: str, sees_all: bool
 ) -> None:
     user = find_user(db, business_slug=business_slug, email=email)
+
+    if user.is_leader:
+        raise OperatorError(f"{user.email} is the leader; the leader always sees all tasks")
+
     user.sees_all_tasks = sees_all
     db.commit()
 
 
-def task_oversight_warning(db: Session, business_slug: str) -> str | None:
-    """A warning when no admin can see, and so change, every task."""
-    business = get_business(db, business_slug)
-    users = select(func.count()).select_from(User).where(User.business_id == business.id)
+def transfer_leadership(db: Session, *, business_slug: str, email: str) -> str | None:
+    """Make an admin the leader; return the previous leader's email, if any."""
+    business = get_business(db, business_slug, lock=True)
+    new_leader = find_user(db, business_slug=business_slug, email=email)
 
-    if db.scalar(users) == 0:
-        return None
+    if new_leader.role != ROLE_ADMIN:
+        raise OperatorError(
+            f"{new_leader.email} is a {new_leader.role}; promote them to admin first"
+        )
+    if business.leader_user_id == new_leader.id:
+        raise OperatorError(f"{new_leader.email} is already the leader")
 
-    overseers = users.where(User.role == ROLE_ADMIN, User.sees_all_tasks.is_(True))
-    if db.scalar(overseers) > 0:
-        return None
+    previous = db.get(User, business.leader_user_id) if business.leader_user_id else None
+    business.leader_user_id = new_leader.id
+    # Kept consistent for images that read only this setting.
+    new_leader.sees_all_tasks = True
+    db.commit()
 
-    return (
-        f"Warning: no admin in {business.slug!r} sees all tasks, so a task "
-        "can only be changed by someone who can see it."
-    )
+    return previous.email if previous else None
 
 
 @dataclass(frozen=True)
@@ -368,10 +390,17 @@ def list_task_grants(db: Session, business_slug: str) -> list[GrantListing]:
 
 def remove_user(db: Session, *, business_slug: str, email: str) -> int:
     """Delete the user and their tasks; return how many tasks were deleted."""
+    business = get_business(db, business_slug, lock=True)
     user = find_user(db, business_slug=business_slug, email=email)
-    ensure_business_keeps_an_admin(db, user, removing=True)
+    ensure_user_can_be_removed(db, user)
 
     task_count = len(user.tasks)
+
+    if user.is_leader:
+        # The last user: the business may become empty, but the foreign key
+        # refuses deleting a recorded leader, so clear it first.
+        business.leader_user_id = None
+        db.flush()
 
     # User.tasks cascades, so the user's tasks are deleted in the same commit.
     db.delete(user)
