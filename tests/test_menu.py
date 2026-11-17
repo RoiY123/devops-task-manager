@@ -63,7 +63,8 @@ def test_menu_lists_every_action_and_exits_on_zero(
         "6  Remove user",
         "9  Transfer leadership",
         "10  Change task visibility",
-        "13  List task grants",
+        "11  Change task editing",
+        "16  List task grants",
         "0  Exit",
     ]:
         assert label in output
@@ -385,9 +386,9 @@ def test_menu_grants_lists_and_revokes_task_view(
         monkeypatch,
         db_session,
         [
-            "11", "test-business", "noa@example.com", "avi@example.com",
-            "13", "test-business",
             "12", "test-business", "noa@example.com", "avi@example.com",
+            "16", "test-business",
+            "14", "test-business", "noa@example.com", "avi@example.com",
             "0",
         ],
     )
@@ -397,6 +398,34 @@ def test_menu_grants_lists_and_revokes_task_view(
     assert "noa@example.com now sees the tasks of avi@example.com (view only)." in output
     assert "noa@example.com  sees tasks of  avi@example.com  (view)" in output
     assert "noa@example.com no longer sees the tasks of avi@example.com." in output
+
+
+def test_menu_changes_editing_and_grants_and_revokes_task_edit(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("eli@example.com", role=ROLE_ADMIN)
+    user_factory("avi@example.com")
+
+    exit_code = run_menu(
+        monkeypatch,
+        db_session,
+        [
+            "13", "test-business", "eli@example.com", "avi@example.com",
+            "15", "test-business", "eli@example.com", "avi@example.com",
+            "11", "test-business", "eli@example.com", "all",
+            "0",
+        ],
+    )
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "eli@example.com can now change the tasks of avi@example.com." in output
+    assert "eli@example.com can no longer change the tasks of avi@example.com." in output
+    assert "eli@example.com now edits all tasks." in output
 
 
 def test_menu_transfers_leadership(

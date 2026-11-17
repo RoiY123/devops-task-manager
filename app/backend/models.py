@@ -119,6 +119,16 @@ class User(Base):
         ),
         # Target of fk_tasks_business_id_owner_id_users.
         UniqueConstraint("business_id", "id", name="uq_users_business_id_id"),
+        # Admins always see every task in their business.
+        CheckConstraint(
+            "role <> 'admin' OR sees_all_tasks",
+            name="ck_users_admin_sees_all",
+        ),
+        # Edit access never exceeds view access.
+        CheckConstraint(
+            "NOT edits_all_tasks OR sees_all_tasks",
+            name="ck_users_edits_all_needs_sees_all",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -165,6 +175,13 @@ class User(Base):
         server_default=false(),
     )
 
+    # Whether the user may change every task in the business; requires sees_all_tasks.
+    edits_all_tasks: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=false(),
+    )
+
     tasks: Mapped[list["Task"]] = relationship(
         back_populates="owner",
         cascade="all, delete-orphan",
@@ -177,10 +194,12 @@ class User(Base):
 
 
 PERMISSION_VIEW = "view"
+# An edit grant also lets the viewer see the owner's tasks.
+PERMISSION_EDIT = "edit"
 
 
 class TaskGrant(Base):
-    """The viewer may see every task of the owner; both are in one business."""
+    """The viewer may see, or see and change, every task of the owner; both are in one business."""
 
     __tablename__ = "task_grants"
 
@@ -202,7 +221,7 @@ class TaskGrant(Base):
             ondelete="CASCADE",
         ),
         CheckConstraint("viewer_id <> owner_id", name="ck_task_grants_not_self"),
-        CheckConstraint("permission IN ('view')", name="ck_task_grants_permission"),
+        CheckConstraint("permission IN ('view', 'edit')", name="ck_task_grants_permission"),
     )
 
     viewer_id: Mapped[int] = mapped_column(Integer)

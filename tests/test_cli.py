@@ -684,6 +684,27 @@ def test_set_task_visibility_reports_the_change(
     user_factory,
 ) -> None:
     user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("avi@example.com")
+
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        user_args("set-task-visibility", "avi@example.com", "--all"),
+        [],
+        interactive=False,
+    )
+
+    assert exit_code == 0
+    assert "avi@example.com now sees all tasks." in capsys.readouterr().out
+
+
+def test_set_task_visibility_refuses_an_admin(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
     user_factory("eli@example.com", role=ROLE_ADMIN)
 
     exit_code = run_cli(
@@ -694,8 +715,38 @@ def test_set_task_visibility_reports_the_change(
         interactive=False,
     )
 
-    assert exit_code == 0
-    assert "eli@example.com now sees own tasks." in capsys.readouterr().out
+    assert exit_code == 1
+    assert "admins always see all tasks" in capsys.readouterr().err
+
+
+def test_set_task_editing_reports_the_change_and_needs_seeing_all(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("eli@example.com", role=ROLE_ADMIN)
+    user_factory("avi@example.com")
+
+    run_cli(
+        monkeypatch,
+        db_session,
+        user_args("set-task-editing", "eli@example.com", "--all"),
+        [],
+        interactive=False,
+    )
+    assert "eli@example.com now edits all tasks." in capsys.readouterr().out
+
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        user_args("set-task-editing", "avi@example.com", "--all"),
+        [],
+        interactive=False,
+    )
+    assert exit_code == 1
+    assert "set visibility to all first" in capsys.readouterr().err
 
 
 def test_list_users_and_set_role_show_task_visibility(
@@ -716,9 +767,9 @@ def test_list_users_and_set_role_show_task_visibility(
         interactive=False,
     )
     listing = capsys.readouterr().out
-    assert "dana@example.com  leader  all tasks" in listing
-    assert "eli@example.com  admin  all tasks" in listing
-    assert "avi@example.com  member  own tasks" in listing
+    assert "dana@example.com  leader  sees all  edits all" in listing
+    assert "eli@example.com  admin  sees all  edits own" in listing
+    assert "avi@example.com  member  sees own  edits own" in listing
 
     run_cli(
         monkeypatch,
@@ -727,7 +778,10 @@ def test_list_users_and_set_role_show_task_visibility(
         [],
         interactive=False,
     )
-    assert "from member to admin; now sees all tasks." in capsys.readouterr().out
+    assert (
+        "from member to admin; now sees all tasks and edits own tasks."
+        in capsys.readouterr().out
+    )
 
 
 def grant_args(command: str, viewer: str, owner: str) -> list[str]:
@@ -759,7 +813,7 @@ def test_grant_task_view_reports_new_and_repeated_grants(
     )
 
 
-def test_grant_notes_a_viewer_who_already_sees_all_tasks(
+def test_view_grant_is_refused_for_a_viewer_who_sees_all_tasks(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
@@ -768,7 +822,7 @@ def test_grant_notes_a_viewer_who_already_sees_all_tasks(
     user_factory("dana@example.com", role=ROLE_ADMIN)
     user_factory("avi@example.com")
 
-    run_cli(
+    exit_code = run_cli(
         monkeypatch,
         db_session,
         grant_args("grant-task-view", "dana@example.com", "avi@example.com"),
@@ -776,7 +830,34 @@ def test_grant_notes_a_viewer_who_already_sees_all_tasks(
         interactive=False,
     )
 
-    assert "Note: dana@example.com already sees all tasks" in capsys.readouterr().out
+    assert exit_code == 1
+    assert "dana@example.com already sees all tasks" in capsys.readouterr().err
+
+
+def test_grant_and_revoke_task_edit_report_the_change(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("eli@example.com", role=ROLE_ADMIN)
+    user_factory("avi@example.com")
+
+    for command, expected in [
+        ("grant-task-edit", "eli@example.com can now change the tasks of avi@example.com."),
+        ("grant-task-edit", "can already change the tasks of avi@example.com; nothing changed."),
+        ("revoke-task-edit", "eli@example.com can no longer change the tasks of avi@example.com."),
+        ("revoke-task-edit", "had no edit grant for the tasks of avi@example.com; nothing changed."),
+    ]:
+        run_cli(
+            monkeypatch,
+            db_session,
+            grant_args(command, "eli@example.com", "avi@example.com"),
+            [],
+            interactive=False,
+        )
+        assert expected in capsys.readouterr().out
 
 
 def test_revoke_and_list_report_when_there_is_nothing(

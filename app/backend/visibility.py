@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.orm import Session
 
-from app.backend.models import ROLE_ADMIN, Task, TaskGrant, User
+from app.backend.models import PERMISSION_EDIT, Task, TaskGrant, User
 
 
 def visible_tasks(user: User) -> ColumnElement[bool]:
@@ -34,10 +34,13 @@ def get_visible_task(db: Session, user: User, task_id: int) -> Task:
     return task
 
 
-def ensure_can_change(user: User, task: Task) -> None:
-    """Owners change their tasks; admins and the leader change any task they can see."""
-    # is_leader as well: a leader demoted by an older image still manages every task.
-    if task.owner_id != user.id and user.role != ROLE_ADMIN and not user.is_leader:
+def ensure_can_change(db: Session, user: User, task: Task) -> None:
+    """Owner, leader, edit-all, or an edit grant on the task's owner."""
+    if task.owner_id == user.id or user.is_leader or user.edits_all_tasks:
+        return
+
+    grant = db.get(TaskGrant, (user.id, task.owner_id))
+    if grant is None or grant.permission != PERMISSION_EDIT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not allowed to change this task",

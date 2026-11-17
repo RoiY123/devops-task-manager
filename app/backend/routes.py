@@ -67,7 +67,7 @@ def update_task(
     current_user: User = Depends(get_current_user),
 ):
     task = get_visible_task(db, current_user, task_id)
-    ensure_can_change(current_user, task)
+    ensure_can_change(db, current_user, task)
 
     if updated_task.title is not None:
         task.title = updated_task.title
@@ -88,7 +88,7 @@ def delete_task(
     current_user: User = Depends(get_current_user),
 ):
     task = get_visible_task(db, current_user, task_id)
-    ensure_can_change(current_user, task)
+    ensure_can_change(db, current_user, task)
 
     db.delete(task)
     db.commit()
