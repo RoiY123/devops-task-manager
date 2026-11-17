@@ -2,11 +2,12 @@
 import unicodedata
 from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 from sqlalchemy.orm import Session, aliased
 
 from app.backend.models import (
+    PERMISSION_EDIT,
     PERMISSION_VIEW,
     ROLE_ADMIN,
     ROLE_MEMBER,
@@ -140,9 +141,26 @@ class UserListing:
     role: str | None
     sees_all_tasks: bool | None
     is_leader: bool | None
+    edits_all_tasks: bool | None
+    has_grants: bool | None
+    has_edit_grants: bool | None
+
+    # "custom" is not stored: it is own tasks plus the users granted.
+    @property
+    def view_level(self) -> str:
+        if self.is_leader or self.sees_all_tasks:
+            return "all"
+        return "custom" if self.has_grants else "own"
+
+    @property
+    def edit_level(self) -> str:
+        if self.is_leader or self.edits_all_tasks:
+            return "all"
+        return "custom" if self.has_edit_grants else "own"
 
 
 def list_users(db: Session, business_slug: str | None = None) -> list[UserListing]:
+    grants = select(TaskGrant.owner_id).where(TaskGrant.viewer_id == User.id)
     query = (
         select(
             Business.slug,
@@ -152,6 +170,9 @@ def list_users(db: Session, business_slug: str | None = None) -> list[UserListin
             User.role,
             User.sees_all_tasks,
             Business.leader_user_id == User.id,
+            User.edits_all_tasks,
+            grants.exists(),
+            grants.where(TaskGrant.permission == PERMISSION_EDIT).exists(),
         )
         .outerjoin(User, User.business_id == Business.id)
         .order_by(Business.slug, User.id)
@@ -247,6 +268,26 @@ def reset_password(
     db.commit()
 
 
+def delete_grants_of(db: Session, viewer: User, permission: str | None = None) -> None:
+    query = delete(TaskGrant).where(TaskGrant.viewer_id == viewer.id)
+    if permission is not None:
+        query = query.where(TaskGrant.permission == permission)
+    db.execute(query)
+
+
+def apply_role_defaults(db: Session, user: User) -> None:
+    # Admins see all and members their own; everyone edits their own.
+    # Grants chosen for the previous role are dropped, so none linger unnoticed.
+    user.sees_all_tasks = user.role == ROLE_ADMIN
+    user.edits_all_tasks = False
+    delete_grants_of(db, user)
+
+
+def ensure_not_leader(user: User, reason: str) -> None:
+    if user.is_leader:
+        raise OperatorError(f"{user.email} is the leader; the leader always {reason}")
+
+
 def set_role(
     db: Session,
     *,
@@ -269,8 +310,7 @@ def set_role(
         )
 
     user.role = role
-    # A role change applies that role's default; set-task-visibility adjusts it.
-    user.sees_all_tasks = role == ROLE_ADMIN
+    apply_role_defaults(db, user)
     db.commit()
 
     return previous
@@ -280,11 +320,47 @@ def set_task_visibility(
     db: Session, *, business_slug: str, email: str, sees_all: bool
 ) -> None:
     user = find_user(db, business_slug=business_slug, email=email)
+    ensure_not_leader(user, "sees all tasks")
 
-    if user.is_leader:
-        raise OperatorError(f"{user.email} is the leader; the leader always sees all tasks")
+    if user.role == ROLE_ADMIN:
+        raise OperatorError(f"{user.email} is an admin; admins always see all tasks")
+
+    if sees_all:
+        # Seeing all makes view grants redundant; edit grants still add editing.
+        delete_grants_of(db, user, PERMISSION_VIEW)
+    else:
+        # Only their own tasks: nothing else to see, so nothing else to edit.
+        user.edits_all_tasks = False
+        delete_grants_of(db, user)
 
     user.sees_all_tasks = sees_all
+    db.commit()
+
+
+def set_task_editing(
+    db: Session, *, business_slug: str, email: str, edits_all: bool
+) -> None:
+    user = find_user(db, business_slug=business_slug, email=email)
+    ensure_not_leader(user, "edits all tasks")
+
+    if edits_all:
+        if not user.sees_all_tasks:
+            raise OperatorError(
+                f"{user.email} does not see all tasks; set visibility to all first"
+            )
+        # Editing all covers every grant.
+        delete_grants_of(db, user)
+    elif user.sees_all_tasks:
+        delete_grants_of(db, user, PERMISSION_EDIT)
+    else:
+        # Keep seeing what the edit grants showed, without changing it.
+        db.execute(
+            update(TaskGrant)
+            .where(TaskGrant.viewer_id == user.id, TaskGrant.permission == PERMISSION_EDIT)
+            .values(permission=PERMISSION_VIEW)
+        )
+
+    user.edits_all_tasks = edits_all
     db.commit()
 
 
@@ -304,16 +380,12 @@ def transfer_leadership(db: Session, *, business_slug: str, email: str) -> str |
     business.leader_user_id = new_leader.id
     # Kept consistent for images that read only this setting.
     new_leader.sees_all_tasks = True
+    if previous is not None:
+        # Back to an ordinary admin; the new leader can widen this.
+        apply_role_defaults(db, previous)
     db.commit()
 
     return previous.email if previous else None
-
-
-@dataclass(frozen=True)
-class GrantResult:
-    created: bool
-    # A grant adds nothing while the viewer sees all tasks; the CLI says so.
-    viewer_sees_all: bool
 
 
 @dataclass(frozen=True)
@@ -337,25 +409,91 @@ def find_grant_users(
 
 def grant_task_view(
     db: Session, *, business_slug: str, viewer_email: str, owner_email: str
-) -> GrantResult:
-    """Let the viewer see every task of the owner; repeating it changes nothing."""
+) -> bool:
+    """Let the viewer see every task of the owner; return False if they already could."""
     viewer, owner = find_grant_users(
         db, business_slug=business_slug, viewer_email=viewer_email, owner_email=owner_email
     )
-    created = db.get(TaskGrant, (viewer.id, owner.id)) is None
 
-    if created:
+    if viewer.sees_all_tasks or viewer.is_leader:
+        raise OperatorError(f"{viewer.email} already sees all tasks")
+
+    # An existing grant, view or edit, already shows the tasks.
+    if db.get(TaskGrant, (viewer.id, owner.id)) is not None:
+        return False
+
+    db.add(
+        TaskGrant(
+            viewer_id=viewer.id,
+            owner_id=owner.id,
+            business_id=viewer.business_id,
+            permission=PERMISSION_VIEW,
+        )
+    )
+    db.commit()
+    return True
+
+
+def grant_task_edit(
+    db: Session, *, business_slug: str, viewer_email: str, owner_email: str
+) -> bool:
+    """Let the viewer change every task of the owner; return False if they already could."""
+    viewer, owner = find_grant_users(
+        db, business_slug=business_slug, viewer_email=viewer_email, owner_email=owner_email
+    )
+    ensure_not_leader(viewer, "edits all tasks")
+
+    if viewer.edits_all_tasks:
+        raise OperatorError(f"{viewer.email} already edits all tasks")
+
+    grant = db.get(TaskGrant, (viewer.id, owner.id))
+
+    if grant is not None and grant.permission == PERMISSION_EDIT:
+        return False
+
+    # Edit access never exceeds view access.
+    if grant is None and not viewer.sees_all_tasks:
+        raise OperatorError(
+            f"{viewer.email} cannot see the tasks of {owner.email}; grant view first"
+        )
+
+    if grant is None:
         db.add(
             TaskGrant(
                 viewer_id=viewer.id,
                 owner_id=owner.id,
                 business_id=viewer.business_id,
-                permission=PERMISSION_VIEW,
+                permission=PERMISSION_EDIT,
             )
         )
-        db.commit()
+    else:
+        grant.permission = PERMISSION_EDIT
 
-    return GrantResult(created=created, viewer_sees_all=viewer.sees_all_tasks)
+    db.commit()
+    return True
+
+
+def revoke_task_edit(
+    db: Session, *, business_slug: str, viewer_email: str, owner_email: str
+) -> bool:
+    """Stop the viewer changing the owner's tasks; return False if they could not."""
+    viewer, owner = find_grant_users(
+        db, business_slug=business_slug, viewer_email=viewer_email, owner_email=owner_email
+    )
+    grant = db.get(TaskGrant, (viewer.id, owner.id))
+
+    if grant is None or grant.permission != PERMISSION_EDIT:
+        return False
+
+    if viewer.sees_all_tasks:
+        # A view grant would add nothing to seeing all.
+        db.delete(grant)
+    else:
+        # They keep seeing the tasks, without changing them.
+        grant.permission = PERMISSION_VIEW
+
+    db.commit()
+    return True
 
 
 def revoke_task_view(

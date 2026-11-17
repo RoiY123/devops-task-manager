@@ -145,7 +145,7 @@ Read-only. Application instance; one command. Remove `--business BUSINESS_SLUG` 
 ./scripts/operator.sh list-users --business BUSINESS_SLUG
 ```
 
-Each line shows the business slug, its name, and one user's id, email, role and task visibility (`all tasks` or `own tasks`), or `no users`. Terminals may display Hebrew names right-to-left reversed; the stored text is not affected.
+Each line shows the business slug, its name, and one user's id, email, role, and which tasks the user sees and may change: `sees all/own/custom  edits all/own/custom`, or `no users`. Custom means their own tasks plus those of the users granted to them. Terminals may display Hebrew names right-to-left reversed; the stored text is not affected.
 
 The leader's role is shown as `leader`. A `Warning: business … has users but no leader` line means an older version changed the business; fix it with `transfer-leadership`.
 
@@ -154,6 +154,11 @@ The leader's role is shown as `leader`. A `Warning: business … has users but n
 The commands below name both the business and the email; a user in another business is not found.
 
 Each business with users has exactly one leader, an admin who always sees and can change every task. The leader cannot be demoted or restricted, and can be removed only as the business's last user; to replace the leader, transfer leadership.
+
+Access to other users' tasks has two parts.<br>
+**Seeing** them: admins always see all tasks; members see their own (the default), all, or their own plus chosen users' (grants).<br>
+**Changing** them, which includes deleting: everyone may change their own tasks by default; admins and members may also change all tasks (only if they see all) or chosen users' tasks (edit grants, only for tasks they can see).<br>
+The leader always sees and changes every task.
 
 **Add a user.** Application instance; one command. It prompts twice for the new user's password (at least 12 characters). Use `--role admin` for an administrator:
 
@@ -182,7 +187,7 @@ Logins made before the reset stay valid until their tokens expire (`ACCESS_TOKEN
   --business BUSINESS_SLUG --email USER_EMAIL --role admin
 ```
 
-A role change also applies that role's default task visibility: admins see all tasks, members their own. Re-apply a custom setting afterwards with `set-task-visibility`.
+A role change applies the new role's defaults: admins see all tasks, members their own, and both change only their own; the user's grants are removed. Re-apply custom settings afterwards. Transferring leadership applies the admin defaults to the previous leader.
 
 **Transfer leadership.** Makes an admin the business's leader; the previous leader stays an admin. To make a member the leader, promote them first. Application instance; one command:
 
@@ -193,16 +198,25 @@ A role change also applies that role's default task visibility: admins see all t
 
 Expected: `ADMIN_EMAIL is now the leader of 'BUSINESS_SLUG'; PREVIOUS_EMAIL remains an admin.` To undo, transfer it back.
 
-**Change task visibility.** Chooses whether a user sees every task in their business (`--all`) or only their own (`--own`). Seeing a task does not allow changing it: only its owner, admins who can see it, and the leader can change or delete it. Application instance; one command:
+**Change task visibility (members).** `--all` shows the member every task in the business; `--own` only their own and removes all their grants. Admins always see all tasks and the leader too, so both are refused. Application instance; one command:
 
 ```bash
 ./scripts/operator.sh set-task-visibility \
   --business BUSINESS_SLUG --email USER_EMAIL --all
 ```
 
-Expected: `USER_EMAIL now sees all tasks.` The leader always sees all tasks, so changing the leader's visibility is refused.
+Expected: `USER_EMAIL now sees all tasks.`
 
-**Let a user see another user's tasks.** A grant lets the viewer see every task of the owner, view only: the viewer cannot change or delete them. Grants are one-way and stay within the business. Application instance; one command at a time:
+**Change task editing.** `--all` lets the user change every task in the business, and requires seeing all tasks; `--own` limits them to their own tasks: their edit grants become view grants, or are removed if they see all tasks. Refused for the leader. Application instance; one command:
+
+```bash
+./scripts/operator.sh set-task-editing \
+  --business BUSINESS_SLUG --email USER_EMAIL --all
+```
+
+Expected: `USER_EMAIL now edits all tasks.`
+
+**Let a user see or change another user's tasks.** A grant gives one user access to every task of another user (the owner): a view grant to see them, an edit grant to see and change them. Grants are one-way and stay within the business. Application instance; one command at a time:
 
 ```bash
 ./scripts/operator.sh grant-task-view \
@@ -215,10 +229,22 @@ Expected: `USER_EMAIL now sees all tasks.` The leader always sees all tasks, so 
 ```
 
 ```bash
+./scripts/operator.sh grant-task-edit \
+  --business BUSINESS_SLUG --viewer USER_EMAIL --owner OWNER_EMAIL
+```
+
+```bash
+./scripts/operator.sh revoke-task-edit \
+  --business BUSINESS_SLUG --viewer USER_EMAIL --owner OWNER_EMAIL
+```
+
+```bash
 ./scripts/operator.sh list-task-grants --business BUSINESS_SLUG
 ```
 
-Expected: `VIEWER_EMAIL now sees the tasks of OWNER_EMAIL (view only).`, `VIEWER_EMAIL no longer sees the tasks of OWNER_EMAIL.`, or one line per grant. Repeating a grant or revoking a missing one changes nothing. A grant has no effect while the viewer sees all tasks. Removing either user deletes their grants.
+Expected: `VIEWER_EMAIL now sees the tasks of OWNER_EMAIL (view only).`, `VIEWER_EMAIL no longer sees the tasks of OWNER_EMAIL.`, `USER_EMAIL can now change the tasks of OWNER_EMAIL.`, `USER_EMAIL can no longer change the tasks of OWNER_EMAIL.`, or one line per grant.
+
+A view grant is refused while the user sees all tasks. An edit grant requires that the user can already see the owner's tasks (they see all, or have a view grant), and upgrades a view grant. Revoking an edit grant keeps the view; revoking the view removes the grant entirely. `list-task-grants` shows each grant as `(view)` or `(edit)`. Repeating a grant or revoking a missing one changes nothing. Removing either user deletes their grants.
 
 **Remove a user.** Permanently deletes the user and all their tasks; their existing logins stop working immediately. Application instance; one command. It shows how many tasks will be deleted, then asks you to type the email again:
 

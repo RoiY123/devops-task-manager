@@ -1,9 +1,17 @@
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.backend.accounts import grant_task_view, revoke_task_view
-from app.backend.models import ROLE_ADMIN, Business, Task
+from app.backend.accounts import (
+    grant_task_edit,
+    grant_task_view,
+    revoke_task_edit,
+    revoke_task_view,
+    set_task_editing,
+    set_task_visibility,
+)
+from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, Task, User
 
 
 @pytest.fixture
@@ -42,34 +50,33 @@ def test_admin_sees_every_task_in_the_business(
     )
 
 
-def test_admin_limited_to_own_tasks_sees_only_them(
+def test_admin_sees_every_task_but_by_default_changes_only_their_own(
     client: TestClient, auth_headers_factory
 ) -> None:
-    # The leader always sees everything, so the restricted admin is a second one.
+    # The leader edits everything, so the admin under test is a second one.
     auth_headers_factory("boss@example.com", role=ROLE_ADMIN)
     avi = auth_headers_factory("avi@example.com")
-    dana = auth_headers_factory(
-        "dana@example.com", role=ROLE_ADMIN, sees_all_tasks=False
-    )
-    avi_task = create_task(client, avi, "Avi's task")
-    create_task(client, dana, "Dana's task")
-
-    assert titles(client, dana) == {"Dana's task"}
-    assert client.get(f"/tasks/{avi_task['id']}", headers=dana).status_code == 404
-
-
-def test_leader_sees_and_changes_every_task_whatever_the_setting(
-    client: TestClient, auth_headers_factory
-) -> None:
-    # sees_all_tasks off for the leader:
-    # what an image from before the leader migration could set.
-    # The leader must still see and manage every task.
-    dana = auth_headers_factory("dana@example.com", role=ROLE_ADMIN, sees_all_tasks=False)
-    avi = auth_headers_factory("avi@example.com")
+    dana = auth_headers_factory("dana@example.com", role=ROLE_ADMIN)
     url = f"/tasks/{create_task(client, avi, 'Avi task')['id']}"
 
-    assert titles(client, dana) == {"Avi task"}
-    assert client.patch(url, json={"completed": True}, headers=dana).status_code == 200
+    assert client.get(url, headers=dana).status_code == 200
+    assert client.patch(url, json={"completed": True}, headers=dana).status_code == 403
+    assert client.delete(url, headers=dana).status_code == 403
+
+
+def test_leader_sees_and_changes_every_task_even_if_demoted_by_an_old_image(
+    client: TestClient, db_session: Session, auth_headers_factory
+) -> None:
+    dana_headers = auth_headers_factory("dana@example.com", role=ROLE_ADMIN)
+    avi = auth_headers_factory("avi@example.com")
+    url = f"/tasks/{create_task(client, avi, 'Avi task')['id']}"
+    # What an image from before the leader migration could do: demote the leader.
+    dana = db_session.scalar(select(User).where(User.email == "dana@example.com"))
+    dana.role, dana.sees_all_tasks = ROLE_MEMBER, False
+    db_session.flush()
+
+    assert titles(client, dana_headers) == {"Avi task"}
+    assert client.patch(url, json={"completed": True}, headers=dana_headers).status_code == 200
 
 
 def test_member_who_sees_all_can_view_but_not_change_others_tasks(
@@ -86,7 +93,7 @@ def test_member_who_sees_all_can_view_but_not_change_others_tasks(
     assert client.get(url, headers=avi).json()["completed"] is False
 
 
-def test_admin_can_change_and_delete_a_visible_task(
+def test_leader_can_change_and_delete_any_task(
     client: TestClient, auth_headers_factory
 ) -> None:
     avi = auth_headers_factory("avi@example.com")
@@ -169,3 +176,57 @@ def test_revoked_grant_hides_the_tasks_again(
 
     assert titles(client, noa) == set()
     assert client.get(avi_url, headers=noa).status_code == 404
+
+
+def give_noa(db: Session, setup: str) -> None:
+    """Give Noa one kind of access to Avi's tasks, the way the operator would."""
+    pair = {
+        "business_slug": "test-business",
+        "viewer_email": "noa@example.com",
+        "owner_email": "avi@example.com",
+    }
+    user = {"business_slug": "test-business", "email": "noa@example.com"}
+
+    if setup == "edits all":
+        set_task_visibility(db, **user, sees_all=True)
+        set_task_editing(db, **user, edits_all=True)
+    if setup in ("edit grant", "view grant", "edit grant revoked"):
+        grant_task_view(db, **pair)
+    if setup in ("edit grant", "edit grant revoked"):
+        grant_task_edit(db, **pair)
+    if setup == "edit grant revoked":
+        revoke_task_edit(db, **pair)
+
+
+@pytest.mark.parametrize(
+    ("setup", "noa_role", "change_status"),
+    [
+        ("edits all", ROLE_MEMBER, 200),
+        ("edit grant", ROLE_MEMBER, 200),
+        ("view grant", ROLE_MEMBER, 403),
+        ("nothing", ROLE_ADMIN, 403),
+        # Revoking editing keeps the view: still visible, no longer changeable.
+        ("edit grant revoked", ROLE_MEMBER, 403),
+    ],
+)
+def test_who_may_change_another_users_task(
+    client: TestClient,
+    db_session: Session,
+    auth_headers_factory,
+    setup: str,
+    noa_role: str,
+    change_status: int,
+) -> None:
+    # A leader first, so an admin Noa is an ordinary admin.
+    auth_headers_factory("boss@example.com", role=ROLE_ADMIN)
+    avi = auth_headers_factory("avi@example.com")
+    noa = auth_headers_factory("noa@example.com", role=noa_role)
+    url = f"/tasks/{create_task(client, avi, 'Avi task')['id']}"
+
+    give_noa(db_session, setup)
+
+    assert client.get(url, headers=noa).status_code == 200
+    assert client.patch(url, json={"completed": True}, headers=noa).status_code == change_status
+    assert client.delete(url, headers=noa).status_code == (
+        204 if change_status == 200 else 403
+    )

@@ -6,13 +6,16 @@ from sqlalchemy.orm import Session
 from app.backend.accounts import (
     OperatorError,
     add_user,
+    grant_task_edit,
     grant_task_view,
     list_task_grants,
     list_users,
     remove_user,
     reset_password,
+    revoke_task_edit,
     revoke_task_view,
     set_role,
+    set_task_editing,
     set_task_visibility,
     transfer_leadership,
 )
@@ -335,28 +338,23 @@ def test_new_admins_see_all_tasks_and_members_their_own(
     assert (admin.sees_all_tasks, member.sees_all_tasks) == (True, False)
 
 
-def test_role_change_applies_the_roles_default_visibility(
+def test_role_change_applies_the_roles_defaults(
     db_session: Session,
     user_factory,
 ) -> None:
     user_factory("dana@example.com", role=ROLE_ADMIN)
     avi = user_factory("avi@example.com")
+    user_factory("noa@example.com")
+    grant(db_session, "avi@example.com", "noa@example.com")
 
     set_role(db_session, business_slug=SLUG, email="avi@example.com", role=ROLE_ADMIN)
-    assert avi.sees_all_tasks is True
+    assert (avi.sees_all_tasks, avi.edits_all_tasks) == (True, False)
+    # Grants chosen for the previous role are dropped.
+    assert grants(db_session) == []
 
-    # A same-role call keeps a custom setting.
-    set_task_visibility(
-        db_session, business_slug=SLUG, email="avi@example.com", sees_all=False
-    )
-    set_role(db_session, business_slug=SLUG, email="avi@example.com", role=ROLE_ADMIN)
-    assert avi.sees_all_tasks is False
-
-    set_task_visibility(
-        db_session, business_slug=SLUG, email="avi@example.com", sees_all=True
-    )
+    set_task_editing(db_session, business_slug=SLUG, email="avi@example.com", edits_all=True)
     set_role(db_session, business_slug=SLUG, email="avi@example.com", role=ROLE_MEMBER)
-    assert avi.sees_all_tasks is False
+    assert (avi.sees_all_tasks, avi.edits_all_tasks) == (False, False)
 
 
 def grants(db: Session) -> list[tuple[str, str, str]]:
@@ -379,8 +377,8 @@ def test_grant_is_listed_and_repeating_it_changes_nothing(
     user_factory("avi@example.com")
     user_factory("noa@example.com")
 
-    assert grant(db_session, "noa@example.com", "avi@example.com").created is True
-    assert grant(db_session, "noa@example.com", "avi@example.com").created is False
+    assert grant(db_session, "noa@example.com", "avi@example.com") is True
+    assert grant(db_session, "noa@example.com", "avi@example.com") is False
     assert grants(db_session) == [("noa@example.com", "avi@example.com", "view")]
 
 
@@ -416,14 +414,15 @@ def test_grant_refuses_the_same_user_and_users_of_another_business(
         grant(db_session, "boss@other.example", "avi@example.com")
 
 
-def test_grant_notes_a_viewer_who_already_sees_all_tasks(
+def test_view_grant_is_refused_for_a_viewer_who_sees_all_tasks(
     db_session: Session,
     user_factory,
 ) -> None:
     user_factory("dana@example.com", role=ROLE_ADMIN)
     user_factory("avi@example.com")
 
-    assert grant(db_session, "dana@example.com", "avi@example.com").viewer_sees_all is True
+    with pytest.raises(OperatorError, match="already sees all tasks"):
+        grant(db_session, "dana@example.com", "avi@example.com")
 
 
 def test_removing_a_user_removes_their_grants_as_viewer_and_owner(
@@ -472,12 +471,16 @@ def test_transfer_makes_an_admin_the_leader_and_keeps_the_previous_one_admin(
 ) -> None:
     dana = user_factory("dana@example.com", role=ROLE_ADMIN)
     avi = user_factory("avi@example.com", role=ROLE_ADMIN)
+    # A stored setting the previous leader may carry; the leader edits all anyway.
+    dana.edits_all_tasks = True
+    db_session.flush()
 
     previous = transfer_leadership(db_session, business_slug=SLUG, email="avi@example.com")
 
     assert previous == "dana@example.com"
     assert test_business.leader_user_id == avi.id
-    assert dana.role == ROLE_ADMIN
+    # Back to the admin defaults: sees all, edits own.
+    assert (dana.role, dana.sees_all_tasks, dana.edits_all_tasks) == (ROLE_ADMIN, True, False)
 
 
 @pytest.mark.parametrize(
@@ -518,3 +521,168 @@ def test_transfer_repairs_a_business_without_a_leader(
 
     assert transfer_leadership(db_session, business_slug=SLUG, email="dana@example.com") is None
     assert test_business.leader_user_id == dana.id
+
+
+def edit_grant(db: Session, viewer: str, owner: str) -> bool:
+    return grant_task_edit(db, business_slug=SLUG, viewer_email=viewer, owner_email=owner)
+
+
+def visibility(db: Session, email: str, sees_all: bool) -> None:
+    set_task_visibility(db, business_slug=SLUG, email=email, sees_all=sees_all)
+
+
+def editing(db: Session, email: str, edits_all: bool) -> None:
+    set_task_editing(db, business_slug=SLUG, email=email, edits_all=edits_all)
+
+
+@pytest.fixture
+def team(user_factory) -> dict[str, User]:
+    """Dana leads; Eli is an admin; Avi, Noa and Zoe are members."""
+    return {
+        "dana": user_factory("dana@example.com", role=ROLE_ADMIN),
+        "eli": user_factory("eli@example.com", role=ROLE_ADMIN),
+        "avi": user_factory("avi@example.com"),
+        "noa": user_factory("noa@example.com"),
+        "zoe": user_factory("zoe@example.com"),
+    }
+
+
+def test_admins_and_the_leader_cannot_be_limited_to_their_own_tasks(
+    db_session: Session,
+    team: dict[str, User],
+) -> None:
+    with pytest.raises(OperatorError, match="admins always see all tasks"):
+        visibility(db_session, "eli@example.com", False)
+    with pytest.raises(OperatorError, match="the leader always sees all tasks"):
+        visibility(db_session, "dana@example.com", False)
+    with pytest.raises(OperatorError, match="the leader always edits all tasks"):
+        editing(db_session, "dana@example.com", False)
+
+
+def test_own_visibility_drops_all_grants_and_editing(
+    db_session: Session,
+    team: dict[str, User],
+) -> None:
+    noa = team["noa"]
+    visibility(db_session, "noa@example.com", True)
+    editing(db_session, "noa@example.com", True)
+
+    visibility(db_session, "noa@example.com", False)
+    assert (noa.sees_all_tasks, noa.edits_all_tasks) == (False, False)
+
+    grant(db_session, "noa@example.com", "avi@example.com")
+    edit_grant(db_session, "noa@example.com", "avi@example.com")
+    visibility(db_session, "noa@example.com", False)
+    assert grants(db_session) == []
+
+
+def test_all_visibility_keeps_edit_grants_and_drops_view_grants(
+    db_session: Session,
+    team: dict[str, User],
+) -> None:
+    grant(db_session, "noa@example.com", "avi@example.com")
+    grant(db_session, "noa@example.com", "zoe@example.com")
+    edit_grant(db_session, "noa@example.com", "zoe@example.com")
+
+    visibility(db_session, "noa@example.com", True)
+
+    assert grants(db_session) == [("noa@example.com", "zoe@example.com", "edit")]
+
+
+def test_editing_all_requires_seeing_all_and_replaces_grants(
+    db_session: Session,
+    team: dict[str, User],
+) -> None:
+    with pytest.raises(OperatorError, match="set visibility to all first"):
+        editing(db_session, "noa@example.com", True)
+
+    visibility(db_session, "noa@example.com", True)
+    edit_grant(db_session, "noa@example.com", "avi@example.com")
+    editing(db_session, "noa@example.com", True)
+
+    assert team["noa"].edits_all_tasks is True
+    assert grants(db_session) == []
+
+
+@pytest.mark.parametrize(("sees_all", "remaining"), [(False, "view"), (True, None)])
+def test_own_editing_downgrades_edit_grants_or_drops_them_when_seeing_all(
+    db_session: Session,
+    team: dict[str, User],
+    sees_all: bool,
+    remaining: str | None,
+) -> None:
+    if sees_all:
+        visibility(db_session, "noa@example.com", True)
+    else:
+        grant(db_session, "noa@example.com", "avi@example.com")
+    edit_grant(db_session, "noa@example.com", "avi@example.com")
+
+    editing(db_session, "noa@example.com", False)
+
+    expected = [("noa@example.com", "avi@example.com", remaining)] if remaining else []
+    assert grants(db_session) == expected
+
+
+def test_edit_grant_needs_view_and_upgrades_a_view_grant(
+    db_session: Session,
+    team: dict[str, User],
+) -> None:
+    with pytest.raises(OperatorError, match="cannot see the tasks of avi@example.com"):
+        edit_grant(db_session, "noa@example.com", "avi@example.com")
+
+    grant(db_session, "noa@example.com", "avi@example.com")
+    assert edit_grant(db_session, "noa@example.com", "avi@example.com") is True
+    assert edit_grant(db_session, "noa@example.com", "avi@example.com") is False
+    assert grants(db_session) == [("noa@example.com", "avi@example.com", "edit")]
+
+
+def test_edit_grant_for_a_user_who_sees_all_and_refusals(
+    db_session: Session,
+    team: dict[str, User],
+) -> None:
+    # Admins see all, so an edit grant needs no view grant first.
+    assert edit_grant(db_session, "eli@example.com", "avi@example.com") is True
+    assert grants(db_session) == [("eli@example.com", "avi@example.com", "edit")]
+
+    with pytest.raises(OperatorError, match="the leader always edits all tasks"):
+        edit_grant(db_session, "dana@example.com", "avi@example.com")
+
+    editing(db_session, "eli@example.com", True)
+    with pytest.raises(OperatorError, match="already edits all tasks"):
+        edit_grant(db_session, "eli@example.com", "noa@example.com")
+
+
+def test_revoking_an_edit_grant_keeps_the_view_unless_the_user_sees_all(
+    db_session: Session,
+    team: dict[str, User],
+) -> None:
+    grant(db_session, "noa@example.com", "avi@example.com")
+    edit_grant(db_session, "noa@example.com", "avi@example.com")
+    edit_grant(db_session, "eli@example.com", "avi@example.com")
+    pair = {"business_slug": SLUG, "owner_email": "avi@example.com"}
+
+    assert revoke_task_edit(db_session, viewer_email="noa@example.com", **pair) is True
+    assert revoke_task_edit(db_session, viewer_email="eli@example.com", **pair) is True
+    assert revoke_task_edit(db_session, viewer_email="noa@example.com", **pair) is False
+    assert grants(db_session) == [("noa@example.com", "avi@example.com", "view")]
+
+
+def test_list_users_shows_custom_levels_for_users_with_grants(
+    db_session: Session,
+    team: dict[str, User],
+) -> None:
+    grant(db_session, "noa@example.com", "avi@example.com")
+    edit_grant(db_session, "noa@example.com", "avi@example.com")
+    grant(db_session, "zoe@example.com", "avi@example.com")
+
+    levels = {
+        row.email: (row.view_level, row.edit_level) for row in list_users(db_session, SLUG)
+    }
+
+    assert levels == {
+        "dana@example.com": ("all", "all"),
+        "eli@example.com": ("all", "own"),
+        "avi@example.com": ("own", "own"),
+        "noa@example.com": ("custom", "custom"),
+        "zoe@example.com": ("custom", "own"),
+    }
