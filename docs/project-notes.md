@@ -110,8 +110,8 @@ Completed:
 - Container access to instance metadata blocked on the application instance
 - Business-specific login (`POST /businesses/{slug}/login`) with per-business, case-insensitive email uniqueness
 - Manual deployment trigger for `main` with one deployment at a time
-- Per-user task visibility (admins see all tasks by default, members their own; operator-adjustable), with tasks tied to their owner's business by a database constraint
-- View-only task grants between users, managed by the operator
+- Per-user task access: who sees and who may change other users' tasks (their own, all, or chosen users'), with admins always seeing all and tasks tied to their owner's business by a database constraint
+- Task grants between users (view, or view and change), managed by the operator
 - A business leader: exactly one per business, always sees and changes every task, transferable by the operator
 
 Current milestone:
@@ -323,15 +323,17 @@ Accepted
 
 ---
 
-### Task Visibility
+### Task Access
 
 Decision:
 
-Task visibility is set per user, not fixed by role. New admins default to seeing every task in their business and members to only their own, and a role change applies the new role's default. The operator adjusts it through the CLI over SSM until admins can manage it through the API.
+Who sees and who may change other users' tasks is set per user, not fixed only by role. Admins always see every task in their business; members see their own (the default), all, or their own plus chosen users'. Everyone may change their own tasks; changing another user's task, which includes deleting it, requires editing all (only for users who see all) or an edit grant for that owner (only for tasks they can see). The database enforces that admins see all and that editing all requires seeing all. New admins and members change only their own tasks, and a role change applies the new role's defaults and removes grants. The operator adjusts access through the CLI over SSM until it can be managed through the API.
 
-Seeing a task does not allow changing it: only its owner, admins who can see it, and the leader may change or delete it. A task the user cannot see returns `404`, so its existence is not revealed; a visible task the user may not change returns `403`.
+The planned management page offers own, all, or custom for both seeing and changing. Custom is not stored: it is the user's own tasks plus their grants.
 
-A grant lets a viewer see every task of a chosen owner in the same business, view only. Grants are one-way, kept within one business by the database, and removed together with either user. Each grant records its permission, so allowing editing later extends the permission rather than redesigning grants.
+A task the user cannot see returns `404`, so its existence is not revealed; a visible task the user may not change returns `403`.
+
+A grant gives one user access to every task of a chosen owner in the same business: view, or edit (see and change). Grants are one-way, kept within one business by the database, and removed together with either user.
 
 Status:
 Accepted
@@ -344,7 +346,7 @@ Decision:
 
 Each business with users has exactly one leader, an admin recorded on the business (`businesses.leader_user_id`) rather than a separate role value. One column makes a second leader impossible, a composite foreign key keeps the leader inside the business and refuses deleting them, and versions that predate the leader still treat them as an admin.
 
-The leader always sees and can change every task, so tasks cannot become unmanageable. The leader cannot be demoted or restricted. Leadership moves only by transfer to an admin, and the previous leader stays an admin. The leader can be removed only as the business's last user, so a business is deleted by removing its other users, then the leader, then the empty business. The first user of an empty business becomes its leader and must be an admin.
+The leader always sees and can change every task, so tasks cannot become unmanageable. The leader cannot be demoted or restricted. Leadership moves only by transfer to an admin, and the previous leader becomes an admin with the admin defaults. The leader can be removed only as the business's last user, so a business is deleted by removing its other users, then the leader, then the empty business. The first user of an empty business becomes its leader and must be an admin.
 
 Status:
 Accepted
