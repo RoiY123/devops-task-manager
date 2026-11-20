@@ -34,13 +34,20 @@ def get_visible_task(db: Session, user: User, task_id: int) -> Task:
     return task
 
 
-def ensure_can_change(db: Session, user: User, task: Task) -> None:
-    """Owner, leader, edit-all, or an edit grant on the task's owner."""
-    if task.owner_id == user.id or user.is_leader or user.edits_all_tasks:
-        return
+def can_change_tasks_of(db: Session, user: User, owner_id: int) -> bool:
+    """Whether the user may change every task of this owner, in the user's business.
 
-    grant = db.get(TaskGrant, (user.id, task.owner_id))
-    if grant is None or grant.permission != PERMISSION_EDIT:
+    Callers make sure the owner belongs to the user's business.
+    """
+    if owner_id == user.id or user.is_leader or user.edits_all_tasks:
+        return True
+
+    grant = db.get(TaskGrant, (user.id, owner_id))
+    return grant is not None and grant.permission == PERMISSION_EDIT
+
+
+def ensure_can_change(db: Session, user: User, task: Task) -> None:
+    if not can_change_tasks_of(db, user, task.owner_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not allowed to change this task",
