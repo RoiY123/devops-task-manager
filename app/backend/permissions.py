@@ -35,6 +35,16 @@ def ensure_can_manage(actor: User, target: User) -> None:
         raise ActionNotAllowed("Admins can manage only members")
 
 
+def can_manage(actor: User) -> bool:
+    return actor.is_leader or actor.role == ROLE_ADMIN
+
+
+def check_can_view_management(actor: User) -> None:
+    # Members manage no one, so they get no view of everyone's access either.
+    if not can_manage(actor):
+        raise ActionNotAllowed("Only the leader and admins can manage users")
+
+
 def check_set_role(actor: User, target: User) -> None:
     # Admins manage only members, so for them this can only promote.
     ensure_can_manage(actor, target)
