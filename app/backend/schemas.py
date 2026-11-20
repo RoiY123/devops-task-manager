@@ -25,3 +25,28 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+class UserSummary(BaseModel):
+    id: int
+    email: str
+    # "leader", "admin" or "member"
+    role: str
+    # "own", "all" or "custom"; the page's three choices
+    sees: str
+    edits: str
+
+
+class Me(UserSummary):
+    business_slug: str
+    # Whether the management page applies to this user (leader or admin).
+    can_manage: bool
+
+
+class GrantSummary(BaseModel):
+    viewer_id: int
+    viewer_email: str
+    owner_id: int
+    owner_email: str
+    # "view" or "edit"
+    permission: str

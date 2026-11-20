@@ -4,10 +4,12 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app.backend.database import check_database_connection
+from app.backend.management import router as management_router
+from app.backend.permissions import ActionNotAllowed
 from app.backend.routes import router
 from app.backend.monitoring import (
     DATABASE_CONNECTION_UP,
@@ -36,6 +38,13 @@ app = FastAPI(
 
 
 app.include_router(router)
+app.include_router(management_router)
+
+
+@app.exception_handler(ActionNotAllowed)
+async def action_not_allowed(request: Request, error: ActionNotAllowed) -> JSONResponse:
+    # Refused management actions become 403 with their reason, from any endpoint.
+    return JSONResponse(status_code=403, content={"detail": str(error)})
 
 
 @app.get("/health")

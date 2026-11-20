@@ -390,7 +390,9 @@ def transfer_leadership(db: Session, *, business_slug: str, email: str) -> str |
 
 @dataclass(frozen=True)
 class GrantListing:
+    viewer_id: int
     viewer_email: str
+    owner_id: int
     owner_email: str
     permission: str
 
@@ -517,7 +519,7 @@ def list_task_grants(db: Session, business_slug: str) -> list[GrantListing]:
     business = get_business(db, business_slug)
     viewer, owner = aliased(User), aliased(User)
     query = (
-        select(viewer.email, owner.email, TaskGrant.permission)
+        select(viewer.id, viewer.email, owner.id, owner.email, TaskGrant.permission)
         .join(viewer, viewer.id == TaskGrant.viewer_id)
         .join(owner, owner.id == TaskGrant.owner_id)
         .where(TaskGrant.business_id == business.id)
