@@ -11,14 +11,6 @@ SLUG = "test-business"
 
 
 @pytest.fixture
-def other_business(db_session: Session) -> Business:
-    business = Business(name="עסק אחר", slug="other-business")
-    db_session.add(business)
-    db_session.flush()
-    return business
-
-
-@pytest.fixture
 def headers(
     db_session: Session,
     auth_headers_factory,

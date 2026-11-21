@@ -126,7 +126,7 @@ def test_error_returns_to_the_menu(
     assert output.out.count("Task Manager operator menu") == 2
 
 
-def test_list_users_treats_blank_business_as_all(
+def test_menu_lists_every_business_for_a_blank_slug(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,

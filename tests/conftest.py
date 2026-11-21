@@ -3,14 +3,48 @@ from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
+from pwdlib import PasswordHash
+from pwdlib.hashers.argon2 import Argon2Hasher
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.backend import cli
+from app.backend import cli, security
 from app.backend.database import get_db
 from app.backend.main import app
 from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, User
 from app.backend.security import hash_password
+
+
+# Kept before any test swaps them, so the guard tests can check the real ones.
+PRODUCTION_PASSWORD_HASH = security.password_hash
+PRODUCTION_DUMMY_PASSWORD_HASH = security.DUMMY_PASSWORD_HASH
+
+# Production's Argon2 settings cost about 45 ms per hash and per check,
+# paid for every test user and login. Tests run the same code with minimal settings;
+# test_security.py checks production's settings and hashing for real.
+TEST_PASSWORD_HASH = PasswordHash(
+    (Argon2Hasher(time_cost=1, memory_cost=1024, parallelism=1),)
+)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def cheap_password_hashing() -> Generator[None, None, None]:
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(security, "password_hash", TEST_PASSWORD_HASH)
+        patch.setattr(
+            security, "DUMMY_PASSWORD_HASH", TEST_PASSWORD_HASH.hash("not-a-real-password")
+        )
+        yield
+
+
+@pytest.fixture
+def production_password_hash() -> PasswordHash:
+    return PRODUCTION_PASSWORD_HASH
+
+
+@pytest.fixture
+def production_dummy_password_hash() -> str:
+    return PRODUCTION_DUMMY_PASSWORD_HASH
 
 
 @pytest.fixture(autouse=True)
@@ -76,6 +110,15 @@ def test_business(db_session: Session) -> Business:
     db_session.add(business)
     db_session.flush()
 
+    return business
+
+
+@pytest.fixture
+def other_business(db_session: Session) -> Business:
+    """A second business, for checking that nothing crosses businesses."""
+    business = Business(name="עסק אחר", slug="other-business")
+    db_session.add(business)
+    db_session.flush()
     return business
 
 

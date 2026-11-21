@@ -63,7 +63,7 @@ def test_create_task_requires_authentication(client: TestClient) -> None:
     assert response.status_code == 401
 
 
-def test_user_cannot_update_another_users_task(
+def test_member_cannot_update_another_members_task(
     client: TestClient,
     auth_headers_factory,
 ) -> None:
@@ -101,7 +101,7 @@ def test_user_cannot_update_another_users_task(
     assert get_response.json()["title"] == "Alice's private task"
 
 
-def test_user_cannot_delete_another_users_task(
+def test_member_cannot_delete_another_members_task(
     client: TestClient,
     auth_headers_factory, 
 ) -> None:
@@ -136,7 +136,7 @@ def test_user_cannot_delete_another_users_task(
     assert get_response.json()["title"] == "Alice's private task"
 
 
-def test_user_cannot_read_another_users_task(
+def test_member_cannot_read_another_members_task(
     client: TestClient,
     auth_headers_factory,
 ) -> None:
@@ -163,7 +163,7 @@ def test_user_cannot_read_another_users_task(
     assert get_response.status_code == 404
 
 
-def test_user_only_sees_their_own_tasks(
+def test_member_only_sees_their_own_tasks(
     client: TestClient,
     auth_headers_factory,
 ) -> None:

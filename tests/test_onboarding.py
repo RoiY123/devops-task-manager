@@ -31,7 +31,7 @@ def user_count(db: Session, email: str) -> int:
     )
 
 
-def test_onboarding_creates_business_and_admin_who_can_log_in(
+def test_onboarding_creates_business_and_its_leader_who_can_log_in(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -156,6 +156,7 @@ def test_database_rejects_unknown_role(
                     email="owner@example.com",
                     hashed_password="not-a-real-hash",
                     business=test_business,
-                    role="owner",
+                    # The leader is recorded on the business, not as a role value.
+                    role="leader",
                 )
             )

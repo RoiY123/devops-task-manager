@@ -14,14 +14,6 @@ from app.backend.accounts import (
 from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, Task, User
 
 
-@pytest.fixture
-def other_business(db_session: Session) -> Business:
-    business = Business(name="עסק אחר", slug="other-business")
-    db_session.add(business)
-    db_session.flush()
-    return business
-
-
 def create_task(client: TestClient, headers: dict[str, str], title: str) -> dict:
     response = client.post("/tasks", json={"title": title}, headers=headers)
     assert response.status_code == 201
@@ -37,6 +29,8 @@ def titles(client: TestClient, headers: dict[str, str]) -> set[str]:
 def test_admin_sees_every_task_in_the_business(
     client: TestClient, auth_headers_factory
 ) -> None:
+    # The leader sees everything anyway, so the admin under test is a second one.
+    auth_headers_factory("boss@example.com", role=ROLE_ADMIN)
     avi = auth_headers_factory("avi@example.com")
     dana = auth_headers_factory("dana@example.com", role=ROLE_ADMIN)
     avi_task = create_task(client, avi, "Avi's task")

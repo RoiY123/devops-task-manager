@@ -38,14 +38,6 @@ def user_count(db: Session, email: str) -> int:
     )
 
 
-@pytest.fixture
-def other_business(db_session: Session) -> Business:
-    business = Business(name="עסק אחר", slug="other-business")
-    db_session.add(business)
-    db_session.flush()
-    return business
-
-
 def test_add_user_creates_member_who_can_log_in(
     client: TestClient,
     db_session: Session,
@@ -464,7 +456,7 @@ def test_first_user_of_an_empty_business_must_be_an_admin_and_leads_it(
     assert test_business.leader_user_id == dana.id
 
 
-def test_transfer_makes_an_admin_the_leader_and_keeps_the_previous_one_admin(
+def test_transfer_makes_an_admin_the_leader_and_gives_the_previous_one_the_admin_defaults(
     db_session: Session,
     user_factory,
     test_business: Business,
