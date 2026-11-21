@@ -274,6 +274,20 @@ Expected: `Renamed business 'BUSINESS_SLUG' from '…' to '…'.` To undo, renam
 
 Expected: `Deleted business 'BUSINESS_SLUG'.`
 
+### Read the audit log
+
+Every successful change to users, task access and businesses is recorded, whether it was made with these commands, the menu, or by a business's leader or admin through the API. Each event records when it happened, who made the change (`operator` for these commands), what changed, and for whom. Passwords are never recorded. The application can add events but cannot change or delete them.
+
+Read-only. Application instance; one command. Newest first; `--limit` shows 1 to 1000 events (default 50):
+
+```bash
+./scripts/operator.sh audit-log --business BUSINESS_SLUG --limit 50
+```
+
+Each line shows the time in UTC, who, the action, the affected user, and the details. For example: `2026-11-22 10:15:03 UTC  dana@…  edit_granted  noa@…  owner_email=avi@… owner_id=14`.
+
+Events stay after users are removed and after the business is deleted, so a deleted business's history can still be read by its slug. If the slug was later reused by another business, a note line lists both business ids. Changes made while an older version was running, for example during a deploy, are not recorded.
+
 ## Certificates: verify renewal
 
 Renewal runs automatically; see **Automatic certificate renewal** in [deployment.md](deployment.md#automatic-certificate-renewal).

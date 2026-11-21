@@ -65,6 +65,7 @@ def test_menu_lists_every_action_and_exits_on_zero(
         "10  Change task visibility",
         "11  Change task editing",
         "16  List task grants",
+        "17  Show audit log",
         "0  Exit",
     ]:
         assert label in output
@@ -426,6 +427,25 @@ def test_menu_changes_editing_and_grants_and_revokes_task_edit(
     assert "eli@example.com can now change the tasks of avi@example.com." in output
     assert "eli@example.com can no longer change the tasks of avi@example.com." in output
     assert "eli@example.com now edits all tasks." in output
+
+
+def test_menu_shows_the_audit_log_with_the_default_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    user_factory("avi@example.com")
+    # Through the menu, so the change is recorded like an operator's.
+    run_menu(monkeypatch, db_session, ["8", "test-business", "avi@example.com", "admin", "0"])
+    capsys.readouterr()
+
+    # A blank limit means the default.
+    exit_code = run_menu(monkeypatch, db_session, ["17", "test-business", "", "0"])
+
+    assert exit_code == 0
+    assert "operator  role_changed  avi@example.com  from=member to=admin" in capsys.readouterr().out
 
 
 def test_menu_transfers_leadership(

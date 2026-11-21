@@ -1,4 +1,5 @@
 import getpass
+import re
 import sys
 
 import pytest
@@ -7,8 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.backend import cli
+from app.backend.accounts import add_user, set_role
 from app.backend.cli import main
-from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, Task, User
+from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, AuditEvent, Business, Task, User
 
 
 ARGS = [
@@ -973,3 +975,99 @@ def test_list_users_warns_about_users_without_a_leader(
         "Warning: business 'test-business' has users but no leader; "
         "run transfer-leadership."
     ) in capsys.readouterr().out
+
+
+def audit_log(monkeypatch, db_session, *extra: str) -> int:
+    return run_cli(
+        monkeypatch,
+        db_session,
+        ["audit-log", "--business", "test-business", *extra],
+        [],
+        interactive=False,
+    )
+
+
+def test_audit_log_shows_events_newest_first_in_utc(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    add_user(
+        db_session,
+        business_slug="test-business",
+        email="avi@example.com",
+        role=ROLE_MEMBER,
+        password=PASSWORD,
+    )
+    set_role(db_session, business_slug="test-business", email="avi@example.com", role=ROLE_ADMIN)
+
+    assert audit_log(monkeypatch, db_session) == 0
+
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 2
+    assert all(re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC  ", line) for line in lines)
+    assert lines[0].endswith("operator  role_changed  avi@example.com  from=member to=admin")
+    assert lines[1].endswith("operator  user_added  avi@example.com  leader=False role=member")
+
+
+@pytest.mark.parametrize("limit", ["0", "1001"])
+def test_audit_log_refuses_a_limit_out_of_range(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    limit: str,
+) -> None:
+    assert audit_log(monkeypatch, db_session, "--limit", limit) == 1
+    assert "from 1 to 1000" in capsys.readouterr().err
+
+
+def test_audit_log_limit_and_empty_log(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    audit_log(monkeypatch, db_session)
+    assert "No audit events for business 'test-business'." in capsys.readouterr().out
+
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+    for email in ["avi@example.com", "noa@example.com"]:
+        add_user(
+            db_session,
+            business_slug="test-business",
+            email=email,
+            role=ROLE_MEMBER,
+            password=PASSWORD,
+        )
+
+    audit_log(monkeypatch, db_session, "--limit", "1")
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1
+    assert "noa@example.com" in lines[0]
+
+
+def test_audit_log_notes_a_slug_used_by_two_businesses(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+) -> None:
+    # A deleted business's slug, reused by a new business.
+    for business_id in (101, 202):
+        db_session.add(
+            AuditEvent(
+                business_id=business_id,
+                business_slug="test-business",
+                actor_kind="operator",
+                action="business_created",
+            )
+        )
+    db_session.flush()
+
+    audit_log(monkeypatch, db_session)
+
+    assert (
+        "belong to more than one business with this slug (ids 101, 202)"
+        in capsys.readouterr().out
+    )
