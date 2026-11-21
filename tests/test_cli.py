@@ -987,7 +987,7 @@ def audit_log(monkeypatch, db_session, *extra: str) -> int:
     )
 
 
-def test_audit_log_shows_events_newest_first_in_utc(
+def test_audit_log_shows_the_latest_events_oldest_to_newest_in_utc(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
@@ -1008,8 +1008,9 @@ def test_audit_log_shows_events_newest_first_in_utc(
     lines = capsys.readouterr().out.splitlines()
     assert len(lines) == 2
     assert all(re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC  ", line) for line in lines)
-    assert lines[0].endswith("operator  role_changed  avi@example.com  from=member to=admin")
-    assert lines[1].endswith("operator  user_added  avi@example.com  leader=False role=member")
+    # Like tail: the most recent event is the last line.
+    assert lines[0].endswith("operator  user_added  avi@example.com  leader=False role=member")
+    assert lines[1].endswith("operator  role_changed  avi@example.com  from=member to=admin")
 
 
 @pytest.mark.parametrize("limit", ["0", "1001"])

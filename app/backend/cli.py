@@ -389,7 +389,9 @@ def audit_limit(value: str | int | None) -> int:
 
 def audit_log_command(db: Session, args: argparse.Namespace) -> str:
     slug = args.business.strip()
-    events = list_audit_events(db, slug, audit_limit(args.limit))
+    # The latest events, printed oldest to newest like tail:
+    # the most recent line ends up right above the prompt.
+    events = list(reversed(list_audit_events(db, slug, audit_limit(args.limit))))
 
     if not events:
         return f"No audit events for business {slug!r}."
@@ -707,7 +709,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     audit = commands.add_parser(
         "audit-log",
-        help="Show a business's recorded changes, newest first (read-only).",
+        help="Show a business's latest recorded changes, oldest to newest (read-only).",
     )
     audit.add_argument(
         "--business",

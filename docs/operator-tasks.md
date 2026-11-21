@@ -278,7 +278,7 @@ Expected: `Deleted business 'BUSINESS_SLUG'.`
 
 Every successful change to users, task access and businesses is recorded, whether it was made with these commands, the menu, or by a business's leader or admin through the API. Each event records when it happened, who made the change (`operator` for these commands), what changed, and for whom. Passwords are never recorded. The application can add events but cannot change or delete them.
 
-Read-only. Application instance; one command. Newest first; `--limit` shows 1 to 1000 events (default 50):
+Read-only. Application instance; one command. The latest events, oldest to newest, so the last line is the most recent; `--limit` sets how many, 1 to 1000 (default 50):
 
 ```bash
 ./scripts/operator.sh audit-log --business BUSINESS_SLUG --limit 50
