@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -50,3 +52,15 @@ class GrantSummary(BaseModel):
     owner_email: str
     # "view" or "edit"
     permission: str
+
+
+class RoleChange(BaseModel):
+    role: Literal["admin", "member"]
+
+
+class LevelChange(BaseModel):
+    level: Literal["own", "all"]
+
+
+class LeadershipTransfer(BaseModel):
+    user_id: int

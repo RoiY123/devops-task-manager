@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from app.backend.accounts import OperatorError
 from app.backend.database import check_database_connection
 from app.backend.management import router as management_router
 from app.backend.permissions import ActionNotAllowed
@@ -45,6 +46,12 @@ app.include_router(management_router)
 async def action_not_allowed(request: Request, error: ActionNotAllowed) -> JSONResponse:
     # Refused management actions become 403 with their reason, from any endpoint.
     return JSONResponse(status_code=403, content={"detail": str(error)})
+
+
+@app.exception_handler(OperatorError)
+async def rule_refused(request: Request, error: OperatorError) -> JSONResponse:
+    # The account functions' refusals (for example "set visibility to all first").
+    return JSONResponse(status_code=400, content={"detail": str(error)})
 
 
 @app.get("/health")
