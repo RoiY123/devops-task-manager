@@ -67,7 +67,7 @@ def business_count(db: Session) -> int:
     return db.scalar(select(func.count()).select_from(Business))
 
 
-def test_creates_business_and_admin(
+def test_creates_business_and_its_leader(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
@@ -106,7 +106,7 @@ def test_mismatched_passwords_create_nothing(
     assert business_count(db_session) == before
 
 
-def test_refuses_without_interactive_terminal(
+def test_create_business_refuses_without_interactive_terminal(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
@@ -751,7 +751,7 @@ def test_set_task_editing_reports_the_change_and_needs_seeing_all(
     assert "set visibility to all first" in capsys.readouterr().err
 
 
-def test_list_users_and_set_role_show_task_visibility(
+def test_list_users_and_set_role_show_task_access(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     db_session: Session,
