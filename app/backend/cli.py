@@ -14,6 +14,7 @@ import getpass
 import sys
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
+from datetime import timezone
 
 from sqlalchemy.orm import Session
 
@@ -44,6 +45,7 @@ from app.backend.accounts import (
     transfer_leadership,
     validate_new_user,
 )
+from app.backend.audit import list_audit_events
 from app.backend.businesses import (
     delete_business,
     ensure_business_is_empty,
@@ -367,6 +369,49 @@ def list_task_grants_command(db: Session, args: argparse.Namespace) -> str:
     )
 
 
+DEFAULT_AUDIT_LIMIT = 50
+# One command can never dump an enormous log.
+MAX_AUDIT_LIMIT = 1000
+
+
+def audit_limit(value: str | int | None) -> int:
+    # From the menu the answer is text, or None when left blank.
+    if value is None:
+        return DEFAULT_AUDIT_LIMIT
+    try:
+        limit = int(value)
+    except ValueError:
+        limit = 0
+    if not 1 <= limit <= MAX_AUDIT_LIMIT:
+        raise OperatorError(f"Limit must be a whole number from 1 to {MAX_AUDIT_LIMIT}")
+    return limit
+
+
+def audit_log_command(db: Session, args: argparse.Namespace) -> str:
+    slug = args.business.strip()
+    events = list_audit_events(db, slug, audit_limit(args.limit))
+
+    if not events:
+        return f"No audit events for business {slug!r}."
+
+    lines = [
+        f"{event.occurred_at.astimezone(timezone.utc):%Y-%m-%d %H:%M:%S} UTC  "
+        f"{event.actor_email or 'operator'}  {event.action}  {event.target_email or '-'}  "
+        + " ".join(f"{key}={value}" for key, value in sorted(event.details.items()))
+        for event in events
+    ]
+
+    # A deleted business's slug can be reused by a new business.
+    business_ids = sorted({event.business_id for event in events})
+    if len(business_ids) > 1:
+        lines.append(
+            f"Note: these events belong to more than one business with this slug "
+            f"(ids {', '.join(map(str, business_ids))})."
+        )
+
+    return "\n".join(lines)
+
+
 def rename_business_command(db: Session, args: argparse.Namespace) -> str:
     previous = rename_business(db, slug=args.slug, name=args.name)
     business = get_business(db, args.slug)
@@ -464,6 +509,10 @@ MENU: list[tuple[str, Handler, list[tuple[str, str, bool]]]] = [
     ("Revoke task edit", revoke_task_edit_command, EDIT_GRANT_FIELDS),
     ("List task grants", list_task_grants_command, [
         ("business", "Business slug", True),
+    ]),
+    ("Show audit log", audit_log_command, [
+        ("business", "Business slug", True),
+        ("limit", f"Number of events (Enter for {DEFAULT_AUDIT_LIMIT})", False),
     ]),
 ]
 
@@ -655,6 +704,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     grants.add_argument("--business", required=True, help="Business slug.")
     grants.set_defaults(handler=list_task_grants_command)
+
+    audit = commands.add_parser(
+        "audit-log",
+        help="Show a business's recorded changes, newest first (read-only).",
+    )
+    audit.add_argument(
+        "--business",
+        required=True,
+        help="Business slug; also works for a deleted business.",
+    )
+    audit.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_AUDIT_LIMIT,
+        help=f"How many events, 1 to {MAX_AUDIT_LIMIT} (default {DEFAULT_AUDIT_LIMIT}).",
+    )
+    audit.set_defaults(handler=audit_log_command)
 
     # The slug is not renamable: it will become the business's login URL.
     rename = commands.add_parser(

@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.backend.accounts import OperatorError, get_business, reject_control_characters
+from app.backend.audit import record
 from app.backend.models import Business, User
 
 
@@ -62,6 +63,15 @@ def rename_business(db: Session, *, slug: str, name: str) -> str:
     previous = business.name
 
     business.name = name
+    # Business management is operator-only, so there is no user actor.
+    if name != previous:
+        record(
+            db,
+            business=business,
+            actor=None,
+            action="business_renamed",
+            **{"from": previous, "to": name},
+        )
     db.commit()
 
     return previous
@@ -82,6 +92,8 @@ def delete_business(db: Session, *, slug: str) -> None:
     business = get_business(db, slug)
     ensure_business_is_empty(db, business)
 
+    # No foreign key: the event stays after the business is gone.
+    record(db, business=business, actor=None, action="business_deleted", name=business.name)
     db.delete(business)
 
     try:

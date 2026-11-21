@@ -9,6 +9,7 @@ from app.backend.accounts import (
     check_password,
     clean_email,
 )
+from app.backend.audit import record
 from app.backend.businesses import clean_business_name, clean_slug
 from app.backend.models import ROLE_ADMIN, Business, User
 from app.backend.security import hash_password
@@ -77,6 +78,15 @@ def create_business_with_admin(
         # The admin needs an id before the business can name them its leader.
         db.flush()
         business.leader_user_id = admin.id
+        # Onboarding is operator-only, so there is no user actor.
+        record(
+            db,
+            business=business,
+            actor=None,
+            action="business_created",
+            target=admin,
+            name=business.name,
+        )
         db.commit()
     except IntegrityError as error:
         db.rollback()

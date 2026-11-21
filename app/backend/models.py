@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, ForeignKey, UniqueConstraint, false, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKeyConstraint, Index, Integer, PrimaryKeyConstraint, String, ForeignKey, UniqueConstraint, false, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -230,6 +231,54 @@ class TaskGrant(Base):
     business_id: Mapped[int] = mapped_column(Integer, nullable=False)
     permission: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=PERMISSION_VIEW
+    )
+
+
+ACTOR_USER = "user"
+ACTOR_OPERATOR = "operator"
+
+
+class AuditEvent(Base):
+    """One successful change, recorded with the change itself.
+
+    No foreign keys and copied emails and slug: the history outlives removed
+    users and deleted businesses. The application role cannot update or
+    delete rows.
+    """
+
+    __tablename__ = "audit_events"
+
+    __table_args__ = (
+        PrimaryKeyConstraint("id", name="pk_audit_events"),
+        CheckConstraint(
+            "actor_kind IN ('user', 'operator')", name="ck_audit_events_actor_kind"
+        ),
+        # A user event names its user; an operator event names no one.
+        # Unknown kinds are left to ck_audit_events_actor_kind,
+        # so each refusal names the rule that was broken.
+        CheckConstraint(
+            "(actor_kind <> 'user' OR (actor_user_id IS NOT NULL AND actor_email IS NOT NULL))"
+            " AND (actor_kind <> 'operator' OR (actor_user_id IS NULL AND actor_email IS NULL))",
+            name="ck_audit_events_actor",
+        ),
+        Index("ix_audit_events_business_id_occurred_at", "business_id", "occurred_at"),
+    )
+
+    # BigInteger: a log that grows for years never runs out of numbers.
+    id: Mapped[int] = mapped_column(BigInteger, autoincrement=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    business_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    business_slug: Mapped[str] = mapped_column(String(63), nullable=False)
+    actor_kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    actor_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actor_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    action: Mapped[str] = mapped_column(String(40), nullable=False)
+    target_user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    details: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
 
 

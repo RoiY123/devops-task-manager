@@ -114,7 +114,11 @@ def change_role(
     target = user_in_business(db, current_user, user_id)
     check_set_role(current_user, target)
     set_role(
-        db, business_slug=current_user.business.slug, email=target.email, role=change.role
+        db,
+        business_slug=current_user.business.slug,
+        email=target.email,
+        role=change.role,
+        actor=current_user,
     )
     return summary_of(db, target)
 
@@ -133,6 +137,7 @@ def change_task_visibility(
         business_slug=current_user.business.slug,
         email=target.email,
         sees_all=change.level == "all",
+        actor=current_user,
     )
     return summary_of(db, target)
 
@@ -152,6 +157,7 @@ def change_task_editing(
         business_slug=current_user.business.slug,
         email=target.email,
         edits_all=edits_all,
+        actor=current_user,
     )
     return summary_of(db, target)
 
@@ -160,11 +166,12 @@ def grant_pair(db: Session, actor: User, user_id: int, owner_id: int) -> tuple[U
     return user_in_business(db, actor, user_id), user_in_business(db, actor, owner_id)
 
 
-def grant_emails(actor: User, viewer: User, owner: User) -> dict[str, str]:
+def grant_arguments(actor: User, viewer: User, owner: User) -> dict:
     return {
         "business_slug": actor.business.slug,
         "viewer_email": viewer.email,
         "owner_email": owner.email,
+        "actor": actor,
     }
 
 
@@ -177,7 +184,7 @@ def add_view_grant(
 ):
     viewer, owner = grant_pair(db, current_user, user_id, owner_id)
     check_grant(db, current_user, viewer, owner, permission=PERMISSION_VIEW)
-    grant_task_view(db, **grant_emails(current_user, viewer, owner))
+    grant_task_view(db, **grant_arguments(current_user, viewer, owner))
     return summary_of(db, viewer)
 
 
@@ -190,7 +197,7 @@ def add_edit_grant(
 ):
     viewer, owner = grant_pair(db, current_user, user_id, owner_id)
     check_grant(db, current_user, viewer, owner, permission=PERMISSION_EDIT)
-    grant_task_edit(db, **grant_emails(current_user, viewer, owner))
+    grant_task_edit(db, **grant_arguments(current_user, viewer, owner))
     return summary_of(db, viewer)
 
 
@@ -203,7 +210,7 @@ def remove_view_grant(
 ):
     viewer, owner = grant_pair(db, current_user, user_id, owner_id)
     check_revoke(current_user, viewer, owner)
-    revoke_task_view(db, **grant_emails(current_user, viewer, owner))
+    revoke_task_view(db, **grant_arguments(current_user, viewer, owner))
     return summary_of(db, viewer)
 
 
@@ -216,7 +223,7 @@ def remove_edit_grant(
 ):
     viewer, owner = grant_pair(db, current_user, user_id, owner_id)
     check_revoke(current_user, viewer, owner)
-    revoke_task_edit(db, **grant_emails(current_user, viewer, owner))
+    revoke_task_edit(db, **grant_arguments(current_user, viewer, owner))
     return summary_of(db, viewer)
 
 
@@ -229,7 +236,10 @@ def change_leadership(
     new_leader = user_in_business(db, current_user, transfer.user_id)
     check_transfer_leadership(current_user, new_leader)
     transfer_leadership(
-        db, business_slug=current_user.business.slug, email=new_leader.email
+        db,
+        business_slug=current_user.business.slug,
+        email=new_leader.email,
+        actor=current_user,
     )
     # The caller was the leader (the check ensures it) and is now an admin.
     return [summary_of(db, new_leader), summary_of(db, current_user)]

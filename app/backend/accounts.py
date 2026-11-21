@@ -6,6 +6,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 from sqlalchemy.orm import Session, aliased
 
+from app.backend.audit import record
 from app.backend.models import (
     PERMISSION_EDIT,
     PERMISSION_VIEW,
@@ -219,6 +220,7 @@ def add_user(
     email: str,
     role: str,
     password: str,
+    actor: User | None = None,
 ) -> User:
     business = get_business(db, business_slug, lock=True)
     # Validated again here: the email may have been taken
@@ -238,11 +240,20 @@ def add_user(
     db.add(user)
 
     try:
+        # The user needs an id before the business can point at it and the
+        # event can name it; everything is saved by the same commit.
+        db.flush()
         if becomes_leader:
-            # The user needs an id before the business can point at it;
-            # both changes are saved by the same commit.
-            db.flush()
             business.leader_user_id = user.id
+        record(
+            db,
+            business=business,
+            actor=actor,
+            action="user_added",
+            target=user,
+            role=user.role,
+            leader=becomes_leader,
+        )
         db.commit()
     except IntegrityError as error:
         db.rollback()
@@ -259,20 +270,24 @@ def reset_password(
     business_slug: str,
     email: str,
     password: str,
+    actor: User | None = None,
 ) -> None:
     # Tokens issued before the reset stay valid until they expire.
     user = find_user(db, business_slug=business_slug, email=email)
     check_password(password)
 
     user.hashed_password = hash_password(password)
+    # Only that it happened; never the password.
+    record(db, business=user.business, actor=actor, action="password_reset", target=user)
     db.commit()
 
 
-def delete_grants_of(db: Session, viewer: User, permission: str | None = None) -> None:
+def delete_grants_of(db: Session, viewer: User, permission: str | None = None) -> int:
+    """Delete the viewer's grants and return how many there were."""
     query = delete(TaskGrant).where(TaskGrant.viewer_id == viewer.id)
     if permission is not None:
         query = query.where(TaskGrant.permission == permission)
-    db.execute(query)
+    return db.execute(query).rowcount
 
 
 def apply_role_defaults(db: Session, user: User) -> None:
@@ -294,6 +309,7 @@ def set_role(
     business_slug: str,
     email: str,
     role: str,
+    actor: User | None = None,
 ) -> str:
     """Change the user's role and return the previous one."""
     check_role(role)
@@ -311,13 +327,26 @@ def set_role(
 
     user.role = role
     apply_role_defaults(db, user)
+    record(
+        db,
+        business=user.business,
+        actor=actor,
+        action="role_changed",
+        target=user,
+        **{"from": previous, "to": role},
+    )
     db.commit()
 
     return previous
 
 
 def set_task_visibility(
-    db: Session, *, business_slug: str, email: str, sees_all: bool
+    db: Session,
+    *,
+    business_slug: str,
+    email: str,
+    sees_all: bool,
+    actor: User | None = None,
 ) -> None:
     user = find_user(db, business_slug=business_slug, email=email)
     ensure_not_leader(user, "sees all tasks")
@@ -325,46 +354,75 @@ def set_task_visibility(
     if user.role == ROLE_ADMIN:
         raise OperatorError(f"{user.email} is an admin; admins always see all tasks")
 
+    changed = user.sees_all_tasks != sees_all
     if sees_all:
         # Seeing all makes view grants redundant; edit grants still add editing.
-        delete_grants_of(db, user, PERMISSION_VIEW)
+        removed = delete_grants_of(db, user, PERMISSION_VIEW)
     else:
         # Only their own tasks: nothing else to see, so nothing else to edit.
         user.edits_all_tasks = False
-        delete_grants_of(db, user)
+        removed = delete_grants_of(db, user)
 
     user.sees_all_tasks = sees_all
+    if changed or removed:
+        record(
+            db,
+            business=user.business,
+            actor=actor,
+            action="task_visibility_changed",
+            target=user,
+            to="all" if sees_all else "own",
+            grants_removed=removed,
+        )
     db.commit()
 
 
 def set_task_editing(
-    db: Session, *, business_slug: str, email: str, edits_all: bool
+    db: Session,
+    *,
+    business_slug: str,
+    email: str,
+    edits_all: bool,
+    actor: User | None = None,
 ) -> None:
     user = find_user(db, business_slug=business_slug, email=email)
     ensure_not_leader(user, "edits all tasks")
 
+    changed = user.edits_all_tasks != edits_all
     if edits_all:
         if not user.sees_all_tasks:
             raise OperatorError(
                 f"{user.email} does not see all tasks; set visibility to all first"
             )
         # Editing all covers every grant.
-        delete_grants_of(db, user)
+        affected = delete_grants_of(db, user)
     elif user.sees_all_tasks:
-        delete_grants_of(db, user, PERMISSION_EDIT)
+        affected = delete_grants_of(db, user, PERMISSION_EDIT)
     else:
         # Keep seeing what the edit grants showed, without changing it.
-        db.execute(
+        affected = db.execute(
             update(TaskGrant)
             .where(TaskGrant.viewer_id == user.id, TaskGrant.permission == PERMISSION_EDIT)
             .values(permission=PERMISSION_VIEW)
-        )
+        ).rowcount
 
     user.edits_all_tasks = edits_all
+    if changed or affected:
+        record(
+            db,
+            business=user.business,
+            actor=actor,
+            action="task_editing_changed",
+            target=user,
+            to="all" if edits_all else "own",
+            grants_changed=affected,
+        )
     db.commit()
 
 
-def transfer_leadership(db: Session, *, business_slug: str, email: str) -> str | None:
+def transfer_leadership(
+    db: Session, *, business_slug: str, email: str, actor: User | None = None
+) -> str | None:
     """Make an admin the leader; return the previous leader's email, if any."""
     business = get_business(db, business_slug, lock=True)
     new_leader = find_user(db, business_slug=business_slug, email=email)
@@ -383,6 +441,14 @@ def transfer_leadership(db: Session, *, business_slug: str, email: str) -> str |
     if previous is not None:
         # Back to an ordinary admin; the new leader can widen this.
         apply_role_defaults(db, previous)
+    record(
+        db,
+        business=business,
+        actor=actor,
+        action="leadership_transferred",
+        target=new_leader,
+        previous_leader_email=previous.email if previous else None,
+    )
     db.commit()
 
     return previous.email if previous else None
@@ -409,8 +475,27 @@ def find_grant_users(
     return viewer, owner
 
 
+def record_grant(
+    db: Session, actor: User | None, action: str, viewer: User, owner: User
+) -> None:
+    record(
+        db,
+        business=viewer.business,
+        actor=actor,
+        action=action,
+        target=viewer,
+        owner_id=owner.id,
+        owner_email=owner.email,
+    )
+
+
 def grant_task_view(
-    db: Session, *, business_slug: str, viewer_email: str, owner_email: str
+    db: Session,
+    *,
+    business_slug: str,
+    viewer_email: str,
+    owner_email: str,
+    actor: User | None = None,
 ) -> bool:
     """Let the viewer see every task of the owner; return False if they already could."""
     viewer, owner = find_grant_users(
@@ -432,12 +517,18 @@ def grant_task_view(
             permission=PERMISSION_VIEW,
         )
     )
+    record_grant(db, actor, "view_granted", viewer, owner)
     db.commit()
     return True
 
 
 def grant_task_edit(
-    db: Session, *, business_slug: str, viewer_email: str, owner_email: str
+    db: Session,
+    *,
+    business_slug: str,
+    viewer_email: str,
+    owner_email: str,
+    actor: User | None = None,
 ) -> bool:
     """Let the viewer change every task of the owner; return False if they already could."""
     viewer, owner = find_grant_users(
@@ -471,12 +562,18 @@ def grant_task_edit(
     else:
         grant.permission = PERMISSION_EDIT
 
+    record_grant(db, actor, "edit_granted", viewer, owner)
     db.commit()
     return True
 
 
 def revoke_task_edit(
-    db: Session, *, business_slug: str, viewer_email: str, owner_email: str
+    db: Session,
+    *,
+    business_slug: str,
+    viewer_email: str,
+    owner_email: str,
+    actor: User | None = None,
 ) -> bool:
     """Stop the viewer changing the owner's tasks; return False if they could not."""
     viewer, owner = find_grant_users(
@@ -494,12 +591,18 @@ def revoke_task_edit(
         # They keep seeing the tasks, without changing them.
         grant.permission = PERMISSION_VIEW
 
+    record_grant(db, actor, "edit_revoked", viewer, owner)
     db.commit()
     return True
 
 
 def revoke_task_view(
-    db: Session, *, business_slug: str, viewer_email: str, owner_email: str
+    db: Session,
+    *,
+    business_slug: str,
+    viewer_email: str,
+    owner_email: str,
+    actor: User | None = None,
 ) -> bool:
     """Remove the grant; return False if there was none."""
     viewer, owner = find_grant_users(
@@ -511,6 +614,7 @@ def revoke_task_view(
         return False
 
     db.delete(grant)
+    record_grant(db, actor, "view_revoked", viewer, owner)
     db.commit()
     return True
 
@@ -528,13 +632,24 @@ def list_task_grants(db: Session, business_slug: str) -> list[GrantListing]:
     return [GrantListing(*row) for row in db.execute(query)]
 
 
-def remove_user(db: Session, *, business_slug: str, email: str) -> int:
+def remove_user(
+    db: Session, *, business_slug: str, email: str, actor: User | None = None
+) -> int:
     """Delete the user and their tasks; return how many tasks were deleted."""
     business = get_business(db, business_slug, lock=True)
     user = find_user(db, business_slug=business_slug, email=email)
     ensure_user_can_be_removed(db, user)
 
     task_count = len(user.tasks)
+    # Written while the user still exists; the event outlives them.
+    record(
+        db,
+        business=business,
+        actor=actor,
+        action="user_removed",
+        target=user,
+        tasks_deleted=task_count,
+    )
 
     if user.is_leader:
         # The last user: the business may become empty, but the foreign key
