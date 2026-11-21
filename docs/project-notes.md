@@ -114,6 +114,7 @@ Completed:
 - Task grants between users (view, or view and change), managed by the operator or, through the API, by the leader and admins
 - A business leader: exactly one per business, always sees and changes every task, transferable by the operator or the leader
 - Management API for the leader and admins: list users and grants, change roles, task access and grants, and transfer leadership, with every permission rule enforced on the server
+- Append-only audit log of user, access and business changes (CLI and API), readable by the operator
 
 Current milestone:
 - Business roles and user management through the API
@@ -363,6 +364,21 @@ The leader and admins manage their own business through API endpoints, which are
 No one changes their own role or access, or the leader's; the leader's transfer of leadership is the one exception. Members manage no one. Admins manage only members, may promote but not demote, and never give more editing than they have. Only the leader changes admins' editing or transfers leadership. Hiding the management page from members is a convenience; the server enforces every rule.
 
 Known limitation: a change sent by an admin at the moment the leader demotes them may still pass its check.
+
+Status:
+Accepted
+
+---
+
+### Audit Log
+
+Decision:
+
+Every successful change to roles, task access, grants, leadership, users and businesses is recorded in `audit_events`, in the same transaction as the change, so a change is never saved without its record. The actor is the logged-in user for API changes and `operator` for the CLI; who ran an operator command is in AWS's SSM session records. Only real changes are recorded, never refusals or changes that change nothing, and never passwords.
+
+Events copy the business slug and users' emails and have no foreign keys, so the history outlives removed users and deleted businesses. The application's database role may insert and read events but not update or delete them, so even a compromised application cannot rewrite history; only the schema owner can. Changes made while an older application version runs, during a deploy overlap or after a rollback, are not recorded, and downgrading the migration drops the history.
+
+For now only the operator reads the log, through the CLI. Events are kept indefinitely; retention, and the privacy of removed users' emails, are to be decided before launch.
 
 Status:
 Accepted
