@@ -111,8 +111,9 @@ Completed:
 - Business-specific login (`POST /businesses/{slug}/login`) with per-business, case-insensitive email uniqueness
 - Manual deployment trigger for `main` with one deployment at a time
 - Per-user task access: who sees and who may change other users' tasks (their own, all, or chosen users'), with admins always seeing all and tasks tied to their owner's business by a database constraint
-- Task grants between users (view, or view and change), managed by the operator
-- A business leader: exactly one per business, always sees and changes every task, transferable by the operator
+- Task grants between users (view, or view and change), managed by the operator or, through the API, by the leader and admins
+- A business leader: exactly one per business, always sees and changes every task, transferable by the operator or the leader
+- Management API for the leader and admins: list users and grants, change roles, task access and grants, and transfer leadership, with every permission rule enforced on the server
 
 Current milestone:
 - Business roles and user management through the API
@@ -316,7 +317,7 @@ Serve multiple independent businesses from one application and database. Every u
 
 Businesses and their first administrators are created by the operator with a command run over SSM; there is no public registration. Users who existed before tenancy were kept in a `legacy` business.
 
-The operator manages users in every business (add, reset password, change role, remove) and businesses themselves (rename the display name, delete when empty) only through the same CLI over SSM, never through web endpoints, so these powers stay behind AWS access. An interactive menu in the same CLI offers the same actions; it adds no access path. Commands that take a password or confirm a deletion refuse to run without an interactive terminal. A business that has users has exactly one leader (see Business Leader).
+The operator manages users in every business (add, reset password, change role, remove) and businesses themselves (rename the display name, delete when empty) through the CLI over SSM, so these powers stay behind AWS access. Within their own business, the leader and admins can also manage roles and task access through the API (see Business Management API). An interactive menu in the same CLI offers the same actions; it adds no access path. Commands that take a password or confirm a deletion refuse to run without an interactive terminal. A business that has users has exactly one leader (see Business Leader).
 
 Status:
 Accepted
@@ -327,7 +328,7 @@ Accepted
 
 Decision:
 
-Who sees and who may change other users' tasks is set per user, not fixed only by role. Admins always see every task in their business; members see their own (the default), all, or their own plus chosen users'. Everyone may change their own tasks; changing another user's task, which includes deleting it, requires editing all (only for users who see all) or an edit grant for that owner (only for tasks they can see). The database enforces that admins see all and that editing all requires seeing all. New admins and members change only their own tasks, and a role change applies the new role's defaults and removes grants. The operator adjusts access through the CLI over SSM until it can be managed through the API.
+Who sees and who may change other users' tasks is set per user, not fixed only by role. Admins always see every task in their business; members see their own (the default), all, or their own plus chosen users'. Everyone may change their own tasks; changing another user's task, which includes deleting it, requires editing all (only for users who see all) or an edit grant for that owner (only for tasks they can see). The database enforces that admins see all and that editing all requires seeing all. New admins and members change only their own tasks, and a role change applies the new role's defaults and removes grants. The operator adjusts access through the CLI over SSM; the leader and admins through the API, within the limits in Business Management API.
 
 The planned management page offers own, all, or custom for both seeing and changing. Custom is not stored: it is the user's own tasks plus their grants.
 
@@ -347,6 +348,21 @@ Decision:
 Each business with users has exactly one leader, an admin recorded on the business (`businesses.leader_user_id`) rather than a separate role value. One column makes a second leader impossible, a composite foreign key keeps the leader inside the business and refuses deleting them, and versions that predate the leader still treat them as an admin.
 
 The leader always sees and can change every task, so tasks cannot become unmanageable. The leader cannot be demoted or restricted. Leadership moves only by transfer to an admin, and the previous leader becomes an admin with the admin defaults. The leader can be removed only as the business's last user, so a business is deleted by removing its other users, then the leader, then the empty business. The first user of an empty business becomes its leader and must be an admin.
+
+Status:
+Accepted
+
+---
+
+### Business Management API
+
+Decision:
+
+The leader and admins manage their own business through API endpoints, which are the server side of the future management page. `GET /me` describes the logged-in user; `GET /business/users` and `GET /business/grants` list the business; the change endpoints mirror the operator CLI. The business always comes from the login, never from the request. Each change finds the users inside the caller's business (`404` otherwise, so other businesses' users are not revealed), checks permissions (`403`), and applies through the same account functions as the CLI, so the data rules are identical (`400`).
+
+No one changes their own role or access, or the leader's; the leader's transfer of leadership is the one exception. Members manage no one. Admins manage only members, may promote but not demote, and never give more editing than they have. Only the leader changes admins' editing or transfers leadership. Hiding the management page from members is a convenience; the server enforces every rule.
+
+Known limitation: a change sent by an admin at the moment the leader demotes them may still pass its check.
 
 Status:
 Accepted
