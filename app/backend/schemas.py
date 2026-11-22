@@ -64,3 +64,8 @@ class LevelChange(BaseModel):
 
 class LeadershipTransfer(BaseModel):
     user_id: int
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str

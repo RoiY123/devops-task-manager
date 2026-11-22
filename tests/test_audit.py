@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.backend.accounts import (
     OperatorError,
     add_user,
+    end_sessions,
     grant_task_edit,
     grant_task_view,
     remove_user,
@@ -67,6 +68,7 @@ def test_operator_changes_are_recorded_with_their_details(
     revoke_task_view(db_session, **pair)
     transfer_leadership(db_session, **user, email="avi@example.com")
     reset_password(db_session, **user, email="noa@example.com", password=PASSWORD + "!")
+    end_sessions(db_session, **user, email="noa@example.com")
     remove_user(db_session, **user, email="noa@example.com")
 
     avi = {"owner_id": user_id(db_session, "avi@example.com"), "owner_email": "avi@example.com"}
@@ -86,6 +88,7 @@ def test_operator_changes_are_recorded_with_their_details(
             {"previous_leader_email": "dana@example.com"},
         ),
         ("operator", "password_reset", "noa@example.com", {}),
+        ("operator", "sessions_ended", "noa@example.com", {}),
         ("operator", "user_removed", "noa@example.com", {"tasks_deleted": 0}),
     ]
 

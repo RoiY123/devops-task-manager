@@ -49,7 +49,8 @@ def create_access_token(
     user_id: int,
     expires_delta: timedelta | None = None,
 ) -> str:
-    expiration = datetime.now(timezone.utc) + (
+    issued_at = datetime.now(timezone.utc)
+    expiration = issued_at + (
         expires_delta
         if expires_delta is not None
         else timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -57,6 +58,8 @@ def create_access_token(
 
     payload = {
         "sub": str(user_id),
+        # Compared with users.tokens_valid_after on every request.
+        "iat": issued_at,
         "exp": expiration,
     }
 
@@ -65,6 +68,18 @@ def create_access_token(
         JWT_SECRET_KEY,
         algorithm=JWT_ALGORITHM,
     )
+
+
+def token_was_cut_off(user: User, issued_at: int | None) -> bool:
+    """Whether the user's logins were ended after this token was issued."""
+    if user.tokens_valid_after is None:
+        return False
+    # Tokens from images before iat existed cannot prove they are newer.
+    if issued_at is None:
+        return True
+    # iat holds whole seconds, so the cut-off is compared at that precision;
+    # the fresh token issued in the same second as a password change stays valid.
+    return issued_at < int(user.tokens_valid_after.timestamp())
 
 
 def get_current_user(
@@ -92,13 +107,14 @@ def get_current_user(
             raise credentials_exception
         
         user_id = int(subject)
+        issued_at = payload.get("iat")
 
     except (jwt.InvalidTokenError, ValueError):
         raise credentials_exception
-    
+
     user = db.get(User, user_id)
 
-    if user is None:
+    if user is None or token_was_cut_off(user, issued_at):
         raise credentials_exception
     
     return user

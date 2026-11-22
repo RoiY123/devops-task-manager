@@ -183,6 +183,11 @@ class User(Base):
         server_default=false(),
     )
 
+    # Login tokens issued before this moment are refused; NULL means no cut-off.
+    tokens_valid_after: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     tasks: Mapped[list["Task"]] = relationship(
         back_populates="owner",
         cascade="all, delete-orphan",

@@ -70,6 +70,7 @@ def test_onboarding_creates_business_and_its_leader_who_can_log_in(
         ({"slug": "a" * 64}, "is invalid"),
         ({"admin_email": "not-an-email"}, "is invalid"),
         ({"admin_password": "short"}, "at least 12 characters"),
+        ({"admin_password": "a" * 257}, "at most 256 characters"),
     ],
 )
 def test_invalid_input_is_rejected_and_nothing_is_saved(
