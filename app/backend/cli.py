@@ -28,6 +28,7 @@ from app.backend.accounts import (
     ROLES,
     OperatorError,
     add_user,
+    end_sessions,
     ensure_user_can_be_removed,
     find_user,
     get_business,
@@ -250,7 +251,16 @@ def reset_password_command(db: Session, args: argparse.Namespace) -> str:
 
     return (
         f"Password reset for {email}. "
-        f"Logins made before the reset stay valid until their tokens expire."
+        f"Their existing logins were ended; they must log in with the new password."
+    )
+
+
+def end_sessions_command(db: Session, args: argparse.Namespace) -> str:
+    user = end_sessions(db, business_slug=args.business, email=args.email)
+
+    return (
+        f"Ended every login of {user.email}; they must log in again. "
+        f"Their password is unchanged."
     )
 
 
@@ -486,6 +496,10 @@ MENU: list[tuple[str, Handler, list[tuple[str, str, bool]]]] = [
         ("business", "Business slug", True),
         ("email", "Email", True),
     ]),
+    ("End sessions", end_sessions_command, [
+        ("business", "Business slug", True),
+        ("email", "Email", True),
+    ]),
     ("Change role", set_role_command, [
         ("business", "Business slug", True),
         ("email", "Email", True),
@@ -625,6 +639,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     reset = user_command("reset-password", "Set a new password for a user.")
     reset.set_defaults(handler=reset_password_command)
+
+    ends = user_command("end-sessions", "Log a user out everywhere; the password is unchanged.")
+    ends.set_defaults(handler=end_sessions_command)
 
     role = user_command("set-role", "Promote or demote a user.")
     role.add_argument("--role", required=True, choices=ROLES)

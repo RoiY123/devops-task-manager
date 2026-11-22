@@ -131,7 +131,7 @@ Application instance; one command. It prompts twice for the administrator passwo
 
 - `--name`: display name; Hebrew is supported. To correct Hebrew while typing, prefer the menu: this line is edited by the server's shell before the CLI starts.
 - `--slug`: part of the business login URL. Lowercase letters, digits and single hyphens, at most 63 characters. Choose it carefully: slugs cannot be renamed. Before a business goes live, an empty business can be deleted and onboarded again.
-- Password: at least 12 characters; the prompt does not display it.
+- Password: 12 to 256 characters; the prompt does not display it.
 
 Expected: `Created business 'BUSINESS_SLUG' (id …) with leader ADMIN_EMAIL (user id …).`
 
@@ -160,7 +160,7 @@ Access to other users' tasks has two parts.<br>
 **Changing** them, which includes deleting: everyone may change their own tasks by default; admins and members may also change all tasks (only if they see all) or chosen users' tasks (edit grants, only for tasks they can see).<br>
 The leader always sees and changes every task.
 
-**Add a user.** Application instance; one command. It prompts twice for the new user's password (at least 12 characters). Use `--role admin` for an administrator:
+**Add a user.** Application instance; one command. It prompts twice for the new user's password (12 to 256 characters). Use `--role admin` for an administrator:
 
 ```bash
 ./scripts/operator.sh add-user \
@@ -178,7 +178,16 @@ In a business without users, the first user becomes its leader and must be added
   --business BUSINESS_SLUG --email USER_EMAIL
 ```
 
-Logins made before the reset stay valid until their tokens expire (`ACCESS_TOKEN_EXPIRE_MINUTES`). To cut off access immediately, remove the user instead.
+The user's existing logins stop working immediately; they log in again with the new password.
+
+**End a user's logins.** Logs the user out everywhere, without changing the password. If someone else may know the password, reset it instead: a reset also ends the logins. Application instance; one command:
+
+```bash
+./scripts/operator.sh end-sessions \
+  --business BUSINESS_SLUG --email USER_EMAIL
+```
+
+Expected: `Ended every login of USER_EMAIL; they must log in again. Their password is unchanged.`
 
 **Promote or demote.** Application instance; one command. Use `--role admin` or `--role member`:
 

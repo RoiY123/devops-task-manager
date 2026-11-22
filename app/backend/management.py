@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.backend.accounts import (
     UserListing,
+    change_own_password,
     grant_task_edit,
     grant_task_view,
     list_task_grants,
@@ -34,10 +35,12 @@ from app.backend.schemas import (
     LeadershipTransfer,
     LevelChange,
     Me,
+    PasswordChange,
     RoleChange,
+    Token,
     UserSummary,
 )
-from app.backend.security import get_current_user
+from app.backend.security import create_access_token, get_current_user
 
 
 router = APIRouter()
@@ -81,6 +84,22 @@ def get_me(
         business_slug=current_user.business.slug,
         can_manage=can_manage(current_user),
     )
+
+
+@router.put("/me/password", response_model=Token)
+def change_my_password(
+    change: PasswordChange,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    change_own_password(
+        db,
+        user=current_user,
+        current_password=change.current_password,
+        new_password=change.new_password,
+    )
+    # Every earlier token is now refused, this device's too; this one replaces it.
+    return Token(access_token=create_access_token(user_id=current_user.id), token_type="bearer")
 
 
 @router.get("/business/users", response_model=list[UserSummary])

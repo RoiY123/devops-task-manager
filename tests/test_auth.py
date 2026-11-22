@@ -1,9 +1,12 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.backend import security
-from app.backend.models import Business
+from app.backend.models import Business, User
 
 
 LOGIN = "/businesses/test-business/login"
@@ -76,3 +79,47 @@ def test_unknown_email_still_checks_a_password(
 
     # The check against the dummy hash makes this as slow as a real failure.
     assert len(calls) == 1
+
+
+CUT_OFF = datetime(2026, 11, 22, 10, 0, 0, 700000, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize(
+    ("cut_off", "issued_at", "status"),
+    [
+        (None, CUT_OFF - timedelta(minutes=10), 200),
+        (CUT_OFF, CUT_OFF - timedelta(minutes=10), 401),
+        # Same second as the cut-off: the fresh token handed out with a password change.
+        (CUT_OFF, CUT_OFF.replace(microsecond=0), 200),
+        (CUT_OFF, CUT_OFF + timedelta(minutes=1), 200),
+        # Issued by an image from before iat existed.
+        (None, None, 200),
+        (CUT_OFF, None, 401),
+    ],
+)
+def test_tokens_issued_before_the_cut_off_are_refused(
+    client: TestClient,
+    db_session: Session,
+    user_factory,
+    token_headers,
+    cut_off: datetime | None,
+    issued_at: datetime | None,
+    status: int,
+) -> None:
+    alice = user_factory(ALICE["email"], ALICE["password"])
+    alice.tokens_valid_after = cut_off
+    db_session.flush()
+
+    assert client.get("/tasks", headers=token_headers(alice.id, issued_at)).status_code == status
+
+
+def test_logging_in_right_after_a_cut_off_works(
+    client: TestClient, db_session: Session, alice
+) -> None:
+    user = db_session.scalar(select(User).where(User.email == ALICE["email"]))
+    user.tokens_valid_after = datetime.now(timezone.utc)
+    db_session.flush()
+
+    access_token = client.post(LOGIN, json=ALICE).json()["access_token"]
+
+    assert client.get("/tasks", headers={"Authorization": f"Bearer {access_token}"}).status_code == 200

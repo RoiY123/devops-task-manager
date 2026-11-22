@@ -61,11 +61,13 @@ def test_menu_lists_every_action_and_exits_on_zero(
     for label in [
         "1  List users",
         "6  Remove user",
-        "9  Transfer leadership",
-        "10  Change task visibility",
-        "11  Change task editing",
-        "16  List task grants",
-        "17  Show audit log",
+        "7  Reset password",
+        "8  End sessions",
+        "10  Transfer leadership",
+        "11  Change task visibility",
+        "12  Change task editing",
+        "17  List task grants",
+        "18  Show audit log",
         "0  Exit",
     ]:
         assert label in output
@@ -251,6 +253,24 @@ def test_menu_resets_a_password(
     assert "Password reset for avi@example.com" in capsys.readouterr().out
 
 
+def test_menu_ends_sessions(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com")
+
+    exit_code = run_menu(monkeypatch, db_session, ["8", "test-business", "avi@example.com", "0"])
+
+    assert exit_code == 0
+    assert "Ended every login of avi@example.com" in capsys.readouterr().out
+    # The menu closed its session, so read the result from the database again.
+    assert db_session.scalar(
+        select(User.tokens_valid_after).where(User.email == "avi@example.com")
+    ) is not None
+
+
 def test_menu_changes_a_role(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -262,7 +282,7 @@ def test_menu_changes_a_role(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["8", "test-business", "avi@example.com", "admin", "0"],
+        ["9", "test-business", "avi@example.com", "admin", "0"],
     )
 
     assert exit_code == 0
@@ -349,7 +369,7 @@ def test_menu_changes_task_visibility(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["10", "test-business", "avi@example.com", "all", "0"],
+        ["11", "test-business", "avi@example.com", "all", "0"],
     )
 
     assert exit_code == 0
@@ -368,7 +388,7 @@ def test_menu_rejects_an_unknown_visibility(
     run_menu(
         monkeypatch,
         db_session,
-        ["10", "test-business", "avi@example.com", "some", "0"],
+        ["11", "test-business", "avi@example.com", "some", "0"],
     )
 
     assert "Visibility must be 'all' or 'own'" in capsys.readouterr().err
@@ -387,9 +407,9 @@ def test_menu_grants_lists_and_revokes_task_view(
         monkeypatch,
         db_session,
         [
-            "12", "test-business", "noa@example.com", "avi@example.com",
-            "16", "test-business",
-            "14", "test-business", "noa@example.com", "avi@example.com",
+            "13", "test-business", "noa@example.com", "avi@example.com",
+            "17", "test-business",
+            "15", "test-business", "noa@example.com", "avi@example.com",
             "0",
         ],
     )
@@ -415,9 +435,9 @@ def test_menu_changes_editing_and_grants_and_revokes_task_edit(
         monkeypatch,
         db_session,
         [
-            "13", "test-business", "eli@example.com", "avi@example.com",
-            "15", "test-business", "eli@example.com", "avi@example.com",
-            "11", "test-business", "eli@example.com", "all",
+            "14", "test-business", "eli@example.com", "avi@example.com",
+            "16", "test-business", "eli@example.com", "avi@example.com",
+            "12", "test-business", "eli@example.com", "all",
             "0",
         ],
     )
@@ -438,11 +458,11 @@ def test_menu_shows_the_audit_log_with_the_default_limit(
     user_factory("dana@example.com", role=ROLE_ADMIN)
     user_factory("avi@example.com")
     # Through the menu, so the change is recorded like an operator's.
-    run_menu(monkeypatch, db_session, ["8", "test-business", "avi@example.com", "admin", "0"])
+    run_menu(monkeypatch, db_session, ["9", "test-business", "avi@example.com", "admin", "0"])
     capsys.readouterr()
 
     # A blank limit means the default.
-    exit_code = run_menu(monkeypatch, db_session, ["17", "test-business", "", "0"])
+    exit_code = run_menu(monkeypatch, db_session, ["18", "test-business", "", "0"])
 
     assert exit_code == 0
     assert "operator  role_changed  avi@example.com  from=member to=admin" in capsys.readouterr().out
@@ -458,7 +478,7 @@ def test_menu_transfers_leadership(
     avi_id = user_factory("avi@example.com", role=ROLE_ADMIN).id
 
     exit_code = run_menu(
-        monkeypatch, db_session, ["9", "test-business", "avi@example.com", "0"]
+        monkeypatch, db_session, ["10", "test-business", "avi@example.com", "0"]
     )
 
     assert exit_code == 0

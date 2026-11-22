@@ -63,6 +63,10 @@ def login_status(client: TestClient, email: str, password: str) -> int:
     ).status_code
 
 
+def cut_off(db: Session, email: str):
+    return db.scalar(select(User.tokens_valid_after).where(User.email == email))
+
+
 def business_count(db: Session) -> int:
     return db.scalar(select(func.count()).select_from(Business))
 
@@ -233,8 +237,29 @@ def test_reset_password_changes_the_password(
     )
 
     assert exit_code == 0
-    assert "stay valid until their tokens expire" in capsys.readouterr().out
+    assert "existing logins were ended" in capsys.readouterr().out
     assert login_status(client, "avi@example.com", "old-password-123") == 401
+    assert login_status(client, "avi@example.com", PASSWORD) == 200
+    # test_auth.py proves that tokens issued before the cut-off are refused.
+    assert cut_off(db_session, "avi@example.com") is not None
+
+
+def test_end_sessions_logs_the_user_out_but_keeps_the_password(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    client: TestClient,
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com", password=PASSWORD)
+
+    exit_code = run_cli(
+        monkeypatch, db_session, user_args("end-sessions", "avi@example.com"), []
+    )
+
+    assert exit_code == 0
+    assert "Ended every login of avi@example.com" in capsys.readouterr().out
+    assert cut_off(db_session, "avi@example.com") is not None
     assert login_status(client, "avi@example.com", PASSWORD) == 200
 
 

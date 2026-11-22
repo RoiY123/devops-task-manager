@@ -1,6 +1,7 @@
 """Account rules and the operator's user-management actions."""
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound
@@ -16,11 +17,13 @@ from app.backend.models import (
     TaskGrant,
     User,
 )
-from app.backend.security import hash_password
+from app.backend.security import hash_password, verify_login_password
 
 
 MAX_EMAIL_LENGTH = 320
 MIN_PASSWORD_LENGTH = 12
+# Far beyond any real password; keeps input reasonable.
+MAX_PASSWORD_LENGTH = 256
 ROLES = (ROLE_ADMIN, ROLE_MEMBER)
 
 
@@ -57,6 +60,11 @@ def check_password(password: str) -> None:
     if len(password) < MIN_PASSWORD_LENGTH:
         raise OperatorError(
             f"Password must be at least {MIN_PASSWORD_LENGTH} characters"
+        )
+
+    if len(password) > MAX_PASSWORD_LENGTH:
+        raise OperatorError(
+            f"Password must be at most {MAX_PASSWORD_LENGTH} characters"
         )
 
 
@@ -264,6 +272,13 @@ def add_user(
     return user
 
 
+def end_sessions_of(user: User) -> None:
+    """Refuse every login token the user was given until now."""
+    # The app's clock, the same one that stamps iat on tokens;
+    # the database's clock (on another machine) could be slightly off from it.
+    user.tokens_valid_after = datetime.now(timezone.utc)
+
+
 def reset_password(
     db: Session,
     *,
@@ -272,13 +287,46 @@ def reset_password(
     password: str,
     actor: User | None = None,
 ) -> None:
-    # Tokens issued before the reset stay valid until they expire.
     user = find_user(db, business_slug=business_slug, email=email)
     check_password(password)
 
     user.hashed_password = hash_password(password)
+    # Whoever knew the old password may still be logged in.
+    end_sessions_of(user)
     # Only that it happened; never the password.
     record(db, business=user.business, actor=actor, action="password_reset", target=user)
+    db.commit()
+
+
+def end_sessions(
+    db: Session,
+    *,
+    business_slug: str,
+    email: str,
+    actor: User | None = None,
+) -> User:
+    """Log the user out everywhere; the password stays the same."""
+    user = find_user(db, business_slug=business_slug, email=email)
+    end_sessions_of(user)
+    record(db, business=user.business, actor=actor, action="sessions_ended", target=user)
+    db.commit()
+    return user
+
+
+def change_own_password(
+    db: Session, *, user: User, current_password: str, new_password: str
+) -> None:
+    """The user's own change; the current password proves it is really them."""
+    if not verify_login_password(current_password, user.hashed_password):
+        raise OperatorError("Current password is incorrect")
+    if new_password == current_password:
+        raise OperatorError("New password must differ from the current one")
+    check_password(new_password)
+
+    user.hashed_password = hash_password(new_password)
+    # Every login ends, this device's included; the endpoint hands it a new token.
+    end_sessions_of(user)
+    record(db, business=user.business, actor=user, action="password_changed", target=user)
     db.commit()
 
 

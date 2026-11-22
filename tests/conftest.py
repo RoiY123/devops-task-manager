@@ -1,6 +1,8 @@
 import os
-from collections.abc import Generator
+from collections.abc import Callable, Generator
+from datetime import datetime, timedelta, timezone
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from pwdlib import PasswordHash
@@ -180,3 +182,16 @@ def auth_headers_factory(client: TestClient, user_factory):
         }
 
     return create_user
+
+
+@pytest.fixture
+def token_headers() -> Callable[[int, datetime | None], dict[str, str]]:
+    """Login headers with a chosen issue time (iat), signed like the app's own tokens."""
+    def make(user_id: int, issued_at: datetime | None) -> dict[str, str]:
+        payload = {"sub": str(user_id), "exp": datetime.now(timezone.utc) + timedelta(minutes=5)}
+        if issued_at is not None:
+            payload["iat"] = issued_at
+        encoded = jwt.encode(payload, security.JWT_SECRET_KEY, algorithm=security.JWT_ALGORITHM)
+        return {"Authorization": f"Bearer {encoded}"}
+
+    return make
