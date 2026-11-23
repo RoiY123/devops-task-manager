@@ -115,6 +115,7 @@ Completed:
 - A business leader: exactly one per business, always sees and changes every task, transferable by the operator or the leader
 - Management API for the leader and admins: list users and grants, change roles, task access and grants, and transfer leadership, with every permission rule enforced on the server
 - Append-only audit log of user, access and business changes (CLI and API), readable by the operator
+- Users change their own password; password changes, operator resets and `end-sessions` end existing logins immediately
 
 Current milestone:
 - Business roles and user management through the API
@@ -302,8 +303,14 @@ Accepted
 
 Decision:
 
-Use Argon2 (`pwdlib`) for password hashing and JWT access tokens for stateless authentication.
-Store only hashed passwords in the database and include only the authenticated user's ID (`sub`) in the JWT payload.
+Use Argon2 (`pwdlib`) for password hashing and signed, short-lived JWT access tokens for authentication.
+Store only hashed passwords in the database. The JWT payload holds only the user's ID (`sub`), when the token was issued (`iat`), and when it expires (`exp`).
+
+Each user has an optional cut-off (`users.tokens_valid_after`), and tokens issued before it are refused. Changing your own password, an operator reset and `end-sessions` set it to the current time, so existing logins end on their next request instead of when their tokens expire. The check needs no extra query, because every request already loads the user.
+
+Changing your own password (`PUT /me/password`) requires the current password, so a stolen token alone is not enough. It returns a new token, which keeps the current device logged in.
+
+Known limitation: times are compared in whole seconds, so a token issued earlier in the same second as the cut-off stays valid until it expires.
 
 Status:
 Accepted
@@ -318,7 +325,7 @@ Serve multiple independent businesses from one application and database. Every u
 
 Businesses and their first administrators are created by the operator with a command run over SSM; there is no public registration. Users who existed before tenancy were kept in a `legacy` business.
 
-The operator manages users in every business (add, reset password, change role, remove) and businesses themselves (rename the display name, delete when empty) through the CLI over SSM, so these powers stay behind AWS access. Within their own business, the leader and admins can also manage roles and task access through the API (see Business Management API). An interactive menu in the same CLI offers the same actions; it adds no access path. Commands that take a password or confirm a deletion refuse to run without an interactive terminal. A business that has users has exactly one leader (see Business Leader).
+The operator manages users in every business (add, reset password, end logins, change role, remove) and businesses themselves (rename the display name, delete when empty) through the CLI over SSM, so these powers stay behind AWS access. Within their own business, the leader and admins can also manage roles and task access through the API (see Business Management API). An interactive menu in the same CLI offers the same actions; it adds no access path. Commands that take a password or confirm a deletion refuse to run without an interactive terminal. A business that has users has exactly one leader (see Business Leader).
 
 Status:
 Accepted
@@ -554,7 +561,7 @@ Keep inbound SSH closed and bind monitoring web interfaces to loopback.
 
 Allow public HTTP and HTTPS access to the application host.<br>
 Restrict application and host metrics access to the monitoring security group, and PostgreSQL access to the application security group.<br>
-Block `/metrics` in Nginx, because a security group cannot restrict paths the reverse proxy forwards, and rate-limit business login (`/businesses/{slug}/login`) per client IP to slow password guessing.
+Block `/metrics` in Nginx, because a security group cannot restrict paths the reverse proxy forwards, and rate-limit business login (`/businesses/{slug}/login`) and password changes (`/me/password`) per client IP, each with its own allowance, to slow password guessing. An attacker using many IP addresses gets the allowance from each.
 
 Require IMDSv2 on both EC2 instances and run the application container as a dedicated non-root user.<br>
 Set the application instance's metadata hop limit to 1 so its containers cannot obtain instance credentials; the monitoring instance keeps 2 because Grafana reads CloudWatch through the instance role.
