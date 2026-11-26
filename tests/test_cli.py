@@ -220,6 +220,43 @@ def test_add_user_to_unknown_business_fails_before_asking_for_password(
     assert "No business with slug 'no-such-business'" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("permanent", [False, True])
+@pytest.mark.parametrize(
+    ("args", "email"),
+    [
+        (ARGS, "dana@cohen.example"),
+        (user_args("add-user", "avi@example.com", "--role", "member"), "avi@example.com"),
+        (user_args("reset-password", "dana@example.com"), "dana@example.com"),
+    ],
+)
+def test_operator_passwords_are_temporary_unless_permanent(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+    args: list[str],
+    email: str,
+    permanent: bool,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        args + (["--permanent"] if permanent else []),
+        [PASSWORD, PASSWORD],
+    )
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    if permanent:
+        assert "The password is permanent." in output
+    else:
+        assert "temporary: they must change it within 7 days." in output
+    user = db_session.scalar(select(User).where(User.email == email))
+    assert (user.temporary_password_expires_at is None) is permanent
+
+
 def test_reset_password_changes_the_password(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1034,7 +1071,9 @@ def test_audit_log_shows_the_latest_events_oldest_to_newest_in_utc(
     assert len(lines) == 2
     assert all(re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC  ", line) for line in lines)
     # Like tail: the most recent event is the last line.
-    assert lines[0].endswith("operator  user_added  avi@example.com  leader=False role=member")
+    assert lines[0].endswith(
+        "operator  user_added  avi@example.com  leader=False role=member temporary=True"
+    )
     assert lines[1].endswith("operator  role_changed  avi@example.com  from=member to=admin")
 
 

@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 from app.backend.database import get_db
 from app.backend.models import Business, Task as TaskModel, User
 from app.backend.schemas import Task, TaskCreate, TaskUpdate, UserLogin, Token
-from app.backend.security import create_access_token, get_current_user, verify_login_password
+from app.backend.security import (
+    create_access_token,
+    get_current_user,
+    temporary_password_expired,
+    verify_login_password,
+)
 from app.backend.visibility import ensure_can_change, get_visible_task, visible_tasks
 
 
@@ -130,10 +135,18 @@ def login_user(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    # Only after the password check, so only someone who knows it learns this.
+    if temporary_password_expired(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your temporary password has expired; ask for a new one",
+        )
+
     access_token = create_access_token(user_id=user.id)
 
     return Token(
         access_token=access_token,
         token_type="bearer",
+        must_change_password=user.must_change_password,
     )

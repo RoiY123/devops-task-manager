@@ -1,7 +1,7 @@
 """Account rules and the operator's user-management actions."""
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound
@@ -24,6 +24,8 @@ MAX_EMAIL_LENGTH = 320
 MIN_PASSWORD_LENGTH = 12
 # Far beyond any real password; keeps input reasonable.
 MAX_PASSWORD_LENGTH = 256
+# A password someone else chose stops working after this long unless replaced.
+TEMPORARY_PASSWORD_LIFETIME = timedelta(days=7)
 ROLES = (ROLE_ADMIN, ROLE_MEMBER)
 
 
@@ -66,6 +68,11 @@ def check_password(password: str) -> None:
         raise OperatorError(
             f"Password must be at most {MAX_PASSWORD_LENGTH} characters"
         )
+
+
+def temporary_password_expiry(temporary: bool) -> datetime | None:
+    """The value for users.temporary_password_expires_at; None means a normal password."""
+    return datetime.now(timezone.utc) + TEMPORARY_PASSWORD_LIFETIME if temporary else None
 
 
 def ensure_email_is_free(db: Session, email: str, business: Business) -> None:
@@ -229,6 +236,7 @@ def add_user(
     role: str,
     password: str,
     actor: User | None = None,
+    temporary: bool = True,
 ) -> User:
     business = get_business(db, business_slug, lock=True)
     # Validated again here: the email may have been taken
@@ -244,6 +252,7 @@ def add_user(
         role=new.role,
         # Admins see every task by default; members only their own.
         sees_all_tasks=new.role == ROLE_ADMIN,
+        temporary_password_expires_at=temporary_password_expiry(temporary),
     )
     db.add(user)
 
@@ -261,6 +270,7 @@ def add_user(
             target=user,
             role=user.role,
             leader=becomes_leader,
+            temporary=temporary,
         )
         db.commit()
     except IntegrityError as error:
@@ -286,15 +296,20 @@ def reset_password(
     email: str,
     password: str,
     actor: User | None = None,
+    temporary: bool = True,
 ) -> None:
     user = find_user(db, business_slug=business_slug, email=email)
     check_password(password)
 
     user.hashed_password = hash_password(password)
+    user.temporary_password_expires_at = temporary_password_expiry(temporary)
     # Whoever knew the old password may still be logged in.
     end_sessions_of(user)
-    # Only that it happened; never the password.
-    record(db, business=user.business, actor=actor, action="password_reset", target=user)
+    # Record only that it happened; never the password.
+    record(
+        db, business=user.business, actor=actor, action="password_reset", target=user,
+        temporary=temporary,
+    )
     db.commit()
 
 
@@ -317,6 +332,8 @@ def change_own_password(
     db: Session, *, user: User, current_password: str, new_password: str
 ) -> None:
     """The user's own change; the current password proves it is really them."""
+    # Locked and re-read first: a reset saved meanwhile is checked, never overwritten.
+    db.refresh(user, with_for_update=True)
     if not verify_login_password(current_password, user.hashed_password):
         raise OperatorError("Current password is incorrect")
     if new_password == current_password:
@@ -324,6 +341,8 @@ def change_own_password(
     check_password(new_password)
 
     user.hashed_password = hash_password(new_password)
+    # The user chose this one, so it is no longer temporary.
+    user.temporary_password_expires_at = None
     # Every login ends, this device's included; the endpoint hands it a new token.
     end_sessions_of(user)
     record(db, business=user.business, actor=user, action="password_changed", target=user)

@@ -40,7 +40,7 @@ from app.backend.schemas import (
     Token,
     UserSummary,
 )
-from app.backend.security import create_access_token, get_current_user
+from app.backend.security import create_access_token, get_current_user, get_token_user
 
 
 router = APIRouter()
@@ -77,12 +77,14 @@ def summary_of(db: Session, user: User) -> UserSummary:
 @router.get("/me", response_model=Me)
 def get_me(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    # Reachable with a temporary password, so the page learns it must be changed.
+    current_user: User = Depends(get_token_user),
 ):
     return Me(
         **summary_of(db, current_user).model_dump(),
         business_slug=current_user.business.slug,
         can_manage=can_manage(current_user),
+        must_change_password=current_user.must_change_password,
     )
 
 
@@ -90,7 +92,8 @@ def get_me(
 def change_my_password(
     change: PasswordChange,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    # Reachable with a temporary password: this is how it gets changed.
+    current_user: User = Depends(get_token_user),
 ):
     change_own_password(
         db,
@@ -99,7 +102,11 @@ def change_my_password(
         new_password=change.new_password,
     )
     # Every earlier token is now refused, this device's too; this one replaces it.
-    return Token(access_token=create_access_token(user_id=current_user.id), token_type="bearer")
+    return Token(
+        access_token=create_access_token(user_id=current_user.id),
+        token_type="bearer",
+        must_change_password=current_user.must_change_password,
+    )
 
 
 @router.get("/business/users", response_model=list[UserSummary])
