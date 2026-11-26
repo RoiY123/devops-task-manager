@@ -188,6 +188,12 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Set while the password is temporary: chosen by someone else, so the user must
+    # change it, and useless after this moment. NULL means a normal password.
+    temporary_password_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     tasks: Mapped[list["Task"]] = relationship(
         back_populates="owner",
         cascade="all, delete-orphan",
@@ -197,6 +203,10 @@ class User(Base):
     @property
     def is_leader(self) -> bool:
         return self.business.leader_user_id == self.id
+
+    @property
+    def must_change_password(self) -> bool:
+        return self.temporary_password_expires_at is not None
 
 
 PERMISSION_VIEW = "view"

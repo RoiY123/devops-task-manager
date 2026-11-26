@@ -27,6 +27,8 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    # The password is temporary: until it is changed, little else works.
+    must_change_password: bool
 
 
 class UserSummary(BaseModel):
@@ -43,6 +45,7 @@ class Me(UserSummary):
     business_slug: str
     # Whether the management page applies to this user (leader or admin).
     can_manage: bool
+    must_change_password: bool
 
 
 class GrantSummary(BaseModel):

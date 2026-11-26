@@ -45,6 +45,11 @@ def verify_login_password(plain_password: str, hashed_password: str | None) -> b
     return password_hash.verify(plain_password, hashed_password)
 
 
+def temporary_password_expired(user: User) -> bool:
+    expires_at = user.temporary_password_expires_at
+    return expires_at is not None and expires_at <= datetime.now(timezone.utc)
+
+
 def create_access_token(
     user_id: int,
     expires_delta: timedelta | None = None,
@@ -82,10 +87,11 @@ def token_was_cut_off(user: User, issued_at: int | None) -> bool:
     return issued_at < int(user.tokens_valid_after.timestamp())
 
 
-def get_current_user(
+def get_token_user(
         credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
         db: Session = Depends(get_db),
 ) -> User:
+    """The user the login token names, even if they must first change their password."""
     credentials_exception =  HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -116,5 +122,16 @@ def get_current_user(
 
     if user is None or token_was_cut_off(user, issued_at):
         raise credentials_exception
-    
+
+    return user
+
+
+def get_current_user(user: User = Depends(get_token_user)) -> User:
+    """The logged-in user. Endpoints use this unless a temporary password may reach them."""
+    if user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Change your temporary password first",
+        )
+
     return user

@@ -26,6 +26,7 @@ except ImportError:
 
 from app.backend.accounts import (
     ROLES,
+    TEMPORARY_PASSWORD_LIFETIME,
     OperatorError,
     add_user,
     end_sessions,
@@ -157,6 +158,31 @@ def read_new_password(label: str) -> str:
     return password
 
 
+def password_is_temporary(args: argparse.Namespace) -> bool:
+    # The command line has --permanent; the menu asks the question instead.
+    if not hasattr(args, "must_change"):
+        return not args.permanent
+    answer = (args.must_change or "yes").strip().lower()
+    if answer not in ("yes", "no"):
+        raise OperatorError("Answer yes or no; nothing was changed")
+    return answer == "yes"
+
+
+PERMANENT_HELP = (
+    "Set a normal password; by default it is temporary and must be changed "
+    f"within {TEMPORARY_PASSWORD_LIFETIME.days} days."
+)
+
+
+def password_note(temporary: bool) -> str:
+    if temporary:
+        return (
+            " The password is temporary: they must change it within "
+            f"{TEMPORARY_PASSWORD_LIFETIME.days} days."
+        )
+    return " The password is permanent."
+
+
 def end_read_transaction(db: Session) -> None:
     # The checks opened a transaction; holding it while the operator types
     # would make a deploy's migration wait on its table locks.
@@ -164,6 +190,7 @@ def end_read_transaction(db: Session) -> None:
 
 
 def create_business(db: Session, args: argparse.Namespace) -> str:
+    temporary = password_is_temporary(args)
     validate_new_business(
         db, name=args.name, slug=args.slug, admin_email=args.admin_email
     )
@@ -176,11 +203,13 @@ def create_business(db: Session, args: argparse.Namespace) -> str:
         slug=args.slug,
         admin_email=args.admin_email,
         admin_password=password,
+        temporary=temporary,
     )
 
     return (
         f"Created business {result.slug!r} (id {result.business_id}) "
         f"with leader {result.admin_email} (user id {result.admin_user_id})."
+        + password_note(temporary)
     )
 
 
@@ -218,6 +247,7 @@ def list_users_command(db: Session, args: argparse.Namespace) -> str:
 
 
 def add_user_command(db: Session, args: argparse.Namespace) -> str:
+    temporary = password_is_temporary(args)
     validate_new_user(
         db, business_slug=args.business, email=args.email, role=args.role
     )
@@ -230,28 +260,36 @@ def add_user_command(db: Session, args: argparse.Namespace) -> str:
         email=args.email,
         role=args.role,
         password=password,
+        temporary=temporary,
     )
 
     return (
         f"Added {user.role} {user.email} (user id {user.id}) "
         f"to business {args.business.strip()!r}"
         + (" as its leader." if user.is_leader else ".")
+        + password_note(temporary)
     )
 
 
 def reset_password_command(db: Session, args: argparse.Namespace) -> str:
+    temporary = password_is_temporary(args)
     user = find_user(db, business_slug=args.business, email=args.email)
     email = user.email
     end_read_transaction(db)
 
     password = read_new_password("New password")
     reset_password(
-        db, business_slug=args.business, email=args.email, password=password
+        db,
+        business_slug=args.business,
+        email=args.email,
+        password=password,
+        temporary=temporary,
     )
 
     return (
         f"Password reset for {email}. "
         f"Their existing logins were ended; they must log in with the new password."
+        + password_note(temporary)
     )
 
 
@@ -466,6 +504,9 @@ EDIT_GRANT_FIELDS = [
     ("viewer", "Editor email (may change the tasks)", True),
     ("owner", "Owner email (whose tasks may be changed)", True),
 ]
+MUST_CHANGE_FIELD = (
+    "must_change", "Must change password at next login? (yes/no, Enter for yes)", False
+)
 
 MENU: list[tuple[str, Handler, list[tuple[str, str, bool]]]] = [
     ("List users", list_users_command, [
@@ -475,6 +516,7 @@ MENU: list[tuple[str, Handler, list[tuple[str, str, bool]]]] = [
         ("name", "Business display name", True),
         ("slug", "Business slug", True),
         ("admin_email", "Admin email", True),
+        MUST_CHANGE_FIELD,
     ]),
     ("Rename business", rename_business_command, [
         ("slug", "Business slug", True),
@@ -487,6 +529,7 @@ MENU: list[tuple[str, Handler, list[tuple[str, str, bool]]]] = [
         ("business", "Business slug", True),
         ("email", "Email", True),
         ("role", "Role (admin/member)", True),
+        MUST_CHANGE_FIELD,
     ]),
     ("Remove user", remove_user_command, [
         ("business", "Business slug", True),
@@ -495,6 +538,7 @@ MENU: list[tuple[str, Handler, list[tuple[str, str, bool]]]] = [
     ("Reset password", reset_password_command, [
         ("business", "Business slug", True),
         ("email", "Email", True),
+        MUST_CHANGE_FIELD,
     ]),
     ("End sessions", end_sessions_command, [
         ("business", "Business slug", True),
@@ -616,6 +660,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Login URL name: lowercase letters, digits and single hyphens.",
     )
     create.add_argument("--admin-email", required=True)
+    create.add_argument("--permanent", action="store_true", help=PERMANENT_HELP)
     create.set_defaults(handler=create_business)
 
     listing = commands.add_parser(
@@ -635,9 +680,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     add = user_command("add-user", "Add a user to an existing business.")
     add.add_argument("--role", required=True, choices=ROLES)
+    add.add_argument("--permanent", action="store_true", help=PERMANENT_HELP)
     add.set_defaults(handler=add_user_command)
 
     reset = user_command("reset-password", "Set a new password for a user.")
+    reset.add_argument("--permanent", action="store_true", help=PERMANENT_HELP)
     reset.set_defaults(handler=reset_password_command)
 
     ends = user_command("end-sessions", "Log a user out everywhere; the password is unchanged.")

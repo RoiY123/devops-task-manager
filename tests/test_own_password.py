@@ -2,10 +2,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app.backend.accounts import OperatorError, change_own_password
 from app.backend.models import AuditEvent, User
+from app.backend.security import hash_password
 
 
 URL = "/me/password"
@@ -94,3 +96,18 @@ def test_change_requires_a_login(client: TestClient, dana: User) -> None:
     response = client.put(URL, json={"current_password": CURRENT, "new_password": NEW})
 
     assert response.status_code == 401
+
+
+def test_a_reset_saved_meanwhile_is_not_overwritten(db_session: Session, dana: User) -> None:
+    # The reset saved by another request: in the database, not in this request's copy.
+    db_session.execute(
+        update(User)
+        .where(User.id == dana.id)
+        .values(hashed_password=hash_password("reset-by-the-leader-1")),
+        execution_options={"synchronize_session": False},
+    )
+
+    with pytest.raises(OperatorError, match="Current password is incorrect"):
+        change_own_password(
+            db_session, user=dana, current_password=CURRENT, new_password=NEW
+        )

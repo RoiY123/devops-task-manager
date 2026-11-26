@@ -8,6 +8,7 @@ from app.backend.accounts import (
     OperatorError,
     check_password,
     clean_email,
+    temporary_password_expiry,
 )
 from app.backend.audit import record
 from app.backend.businesses import clean_business_name, clean_slug
@@ -55,6 +56,7 @@ def create_business_with_admin(
     slug: str,
     admin_email: str,
     admin_password: str,
+    temporary: bool = True,
 ) -> OnboardedBusiness:
     # Validated again here: the slug may have been taken
     # while the operator was typing the password.
@@ -68,6 +70,7 @@ def create_business_with_admin(
         business=business,
         role=ROLE_ADMIN,
         sees_all_tasks=True,
+        temporary_password_expires_at=temporary_password_expiry(temporary),
     )
 
     db.add_all([business, admin])
@@ -86,6 +89,7 @@ def create_business_with_admin(
             action="business_created",
             target=admin,
             name=business.name,
+            temporary=temporary,
         )
         db.commit()
     except IntegrityError as error:

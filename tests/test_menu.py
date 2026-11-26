@@ -85,7 +85,8 @@ def test_menu_adds_a_user_with_hidden_password(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["5", "test-business", "avi@example.com", "member", "0"],
+        # The blank answer: Enter at "Must change password at next login?".
+        ["5", "test-business", "avi@example.com", "member", "", "0"],
         passwords=[PASSWORD, PASSWORD],
     )
 
@@ -118,7 +119,7 @@ def test_error_returns_to_the_menu(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["5", "no-such-business", "avi@example.com", "member", "0"],
+        ["5", "no-such-business", "avi@example.com", "member", "", "0"],
     )
 
     assert exit_code == 0
@@ -201,7 +202,7 @@ def test_unreadable_password_in_menu_returns_to_menu(
     monkeypatch.setattr(sys, "stdin", FakeStdin(True))
     monkeypatch.setattr(
         "builtins.input",
-        scripted(["5", "test-business", "avi@example.com", "member", "0"]),
+        scripted(["5", "test-business", "avi@example.com", "member", "", "0"]),
     )
     monkeypatch.setattr(getpass, "getpass", leftover_byte)
     db_session.commit()
@@ -225,13 +226,50 @@ def test_menu_creates_a_business(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["2", "אינסטלציה כהן", "cohen-plumbing", "dana@cohen.example", "0"],
+        ["2", "אינסטלציה כהן", "cohen-plumbing", "dana@cohen.example", "", "0"],
         passwords=[PASSWORD, PASSWORD],
     )
 
     assert exit_code == 0
     assert "Created business 'cohen-plumbing'" in capsys.readouterr().out
     assert find_user(db_session, "dana@cohen.example").business.slug == "cohen-plumbing"
+
+
+@pytest.mark.parametrize(("answer", "temporary"), [("", True), ("yes", True), ("no", False)])
+def test_menu_asks_whether_the_password_must_be_changed(
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: Session,
+    user_factory,
+    answer: str,
+    temporary: bool,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+
+    exit_code = run_menu(
+        monkeypatch,
+        db_session,
+        ["5", "test-business", "avi@example.com", "member", answer, "0"],
+        passwords=[PASSWORD, PASSWORD],
+    )
+
+    assert exit_code == 0
+    user = find_user(db_session, "avi@example.com")
+    assert (user.temporary_password_expires_at is not None) is temporary
+
+
+def test_menu_refuses_an_unclear_answer_before_asking_for_the_password(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("dana@example.com", role=ROLE_ADMIN)
+
+    # No passwords scripted: a password prompt would fail the test.
+    run_menu(monkeypatch, db_session, ["5", "test-business", "avi@example.com", "member", "maybe", "0"])
+
+    assert "Answer yes or no; nothing was changed" in capsys.readouterr().err
+    assert find_user(db_session, "avi@example.com") is None
 
 
 def test_menu_resets_a_password(
@@ -245,7 +283,7 @@ def test_menu_resets_a_password(
     exit_code = run_menu(
         monkeypatch,
         db_session,
-        ["7", "test-business", "avi@example.com", "0"],
+        ["7", "test-business", "avi@example.com", "", "0"],
         passwords=[PASSWORD, PASSWORD],
     )
 

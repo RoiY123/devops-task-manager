@@ -73,8 +73,14 @@ def test_operator_changes_are_recorded_with_their_details(
 
     avi = {"owner_id": user_id(db_session, "avi@example.com"), "owner_email": "avi@example.com"}
     assert events(db_session) == [
-        ("operator", "user_added", "avi@example.com", {"role": "member", "leader": False}),
-        ("operator", "user_added", "noa@example.com", {"role": "member", "leader": False}),
+        (
+            "operator", "user_added", "avi@example.com",
+            {"role": "member", "leader": False, "temporary": True},
+        ),
+        (
+            "operator", "user_added", "noa@example.com",
+            {"role": "member", "leader": False, "temporary": True},
+        ),
         ("operator", "role_changed", "avi@example.com", {"from": "member", "to": "admin"}),
         ("operator", "task_visibility_changed", "noa@example.com", {"to": "all", "grants_removed": 0}),
         ("operator", "task_editing_changed", "noa@example.com", {"to": "all", "grants_changed": 0}),
@@ -87,7 +93,7 @@ def test_operator_changes_are_recorded_with_their_details(
             "operator", "leadership_transferred", "avi@example.com",
             {"previous_leader_email": "dana@example.com"},
         ),
-        ("operator", "password_reset", "noa@example.com", {}),
+        ("operator", "password_reset", "noa@example.com", {"temporary": True}),
         ("operator", "sessions_ended", "noa@example.com", {}),
         ("operator", "user_removed", "noa@example.com", {"tasks_deleted": 0}),
     ]
@@ -180,7 +186,7 @@ def test_password_reset_never_records_the_password(
     reset_password(db_session, business_slug=SLUG, email="avi@example.com", password=secret)
 
     event = db_session.scalars(select(AuditEvent)).one()
-    assert event.details == {}
+    assert event.details == {"temporary": True}
     stored = [getattr(event, column.key) for column in AuditEvent.__table__.columns]
     assert all(secret not in str(value) for value in stored)
 
