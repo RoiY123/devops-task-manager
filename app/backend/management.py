@@ -1,16 +1,18 @@
 """Endpoints for the management page; each works only in the caller's own business."""
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.backend.accounts import (
     UserListing,
+    add_user,
     change_own_password,
     grant_task_edit,
     grant_task_view,
     list_task_grants,
     list_users,
+    reset_password,
     revoke_task_edit,
     revoke_task_view,
     set_role,
@@ -22,8 +24,10 @@ from app.backend.database import get_db
 from app.backend.models import PERMISSION_EDIT, PERMISSION_VIEW, User
 from app.backend.permissions import (
     can_manage,
+    check_add_user,
     check_can_view_management,
     check_grant,
+    check_reset_password,
     check_revoke,
     check_set_editing,
     check_set_role,
@@ -31,16 +35,24 @@ from app.backend.permissions import (
     check_transfer_leadership,
 )
 from app.backend.schemas import (
+    AddedUser,
     GrantSummary,
     LeadershipTransfer,
     LevelChange,
     Me,
+    NewUser,
     PasswordChange,
     RoleChange,
+    TemporaryPassword,
     Token,
     UserSummary,
 )
-from app.backend.security import create_access_token, get_current_user, get_token_user
+from app.backend.security import (
+    create_access_token,
+    generate_temporary_password,
+    get_current_user,
+    get_token_user,
+)
 
 
 router = APIRouter()
@@ -72,6 +84,14 @@ def user_in_business(db: Session, actor: User, user_id: int) -> User:
 def summary_of(db: Session, user: User) -> UserSummary:
     # Read back after the change, so the page shows what was actually saved.
     return summary(next(row for row in users_of(db, user) if row.user_id == user.id))
+
+
+def lock_for_change(db: Session, actor: User, *users: User) -> None:
+    """Re-read the business and users under lock, so a change saved at this moment is seen."""
+    # Business first, then users by id: the order other changes lock in, so none deadlock.
+    db.refresh(actor.business, with_for_update=True)
+    for user in sorted({actor, *users}, key=lambda user: user.id):
+        db.refresh(user, with_for_update=True)
 
 
 @router.get("/me", response_model=Me)
@@ -107,6 +127,52 @@ def change_my_password(
         token_type="bearer",
         must_change_password=current_user.must_change_password,
     )
+
+
+@router.post("/business/users", response_model=AddedUser, status_code=status.HTTP_201_CREATED)
+def add_business_user(
+    new: NewUser,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    lock_for_change(db, current_user)
+    check_add_user(current_user)
+    password = generate_temporary_password()
+    user = add_user(
+        db,
+        business_slug=current_user.business.slug,
+        email=new.email,
+        role=new.role,
+        password=password,
+        actor=current_user,
+    )
+    # The only copy of the password: no browser or proxy may keep this answer.
+    response.headers["Cache-Control"] = "no-store"
+    return AddedUser(user=summary_of(db, user), temporary_password=password)
+
+
+@router.post("/business/users/{user_id}/password-reset", response_model=TemporaryPassword)
+def reset_business_user_password(
+    user_id: int,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    target = user_in_business(db, current_user, user_id)
+    lock_for_change(db, current_user, target)
+    check_reset_password(current_user, target)
+    password = generate_temporary_password()
+    reset_password(
+        db,
+        business_slug=current_user.business.slug,
+        email=target.email,
+        password=password,
+        actor=current_user,
+    )
+    # The only copy of the password: no browser or proxy may keep this answer.
+    response.headers["Cache-Control"] = "no-store"
+    return TemporaryPassword(temporary_password=password)
 
 
 @router.get("/business/users", response_model=list[UserSummary])

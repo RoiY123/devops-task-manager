@@ -5,7 +5,9 @@ from app.backend.accounts import grant_task_edit, set_task_editing
 from app.backend.models import ROLE_ADMIN, Business, User
 from app.backend.permissions import (
     ActionNotAllowed,
+    check_add_user,
     check_grant,
+    check_reset_password,
     check_revoke,
     check_set_role,
     check_set_visibility,
@@ -168,3 +170,39 @@ def test_only_the_leader_transfers_leadership(
     assert_outcome(
         lambda: check_transfer_leadership(people[actor], people[new_leader]), refusal
     )
+
+
+@pytest.mark.parametrize(
+    ("actor", "refusal"),
+    [
+        ("dana", None),
+        # Any admin, including one who edits only their own tasks;
+        # the role asked for does not matter.
+        ("eli", None),
+        ("avi", "Only the leader and admins"),
+    ],
+)
+def test_who_may_add_users(people: dict[str, User], actor: str, refusal: str | None) -> None:
+    assert_outcome(lambda: check_add_user(people[actor]), refusal)
+
+
+@pytest.mark.parametrize(
+    ("actor", "target", "refusal"),
+    [
+        ("dana", "eli", None),
+        ("dana", "avi", None),
+        ("ori", "avi", None),
+        ("ori", "eli", "only members' passwords"),
+        ("eli", "avi", "Only admins who edit all tasks"),
+        # An edit grant on Avi is not enough: logging in as Avi gives Avi's other access too.
+        ("gal", "avi", "Only admins who edit all tasks"),
+        ("avi", "noa", "Only the leader and admins"),
+        ("dana", "dana", "your own password"),
+        ("ori", "dana", "Only the operator"),
+        ("ori", "boss", "User not found"),
+    ],
+)
+def test_who_may_reset_passwords(
+    people: dict[str, User], actor: str, target: str, refusal: str | None
+) -> None:
+    assert_outcome(lambda: check_reset_password(people[actor], people[target]), refusal)

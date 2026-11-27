@@ -1,7 +1,11 @@
-"""Guards for the cheap password hashing that conftest.py swaps in for tests."""
+"""Guards for the cheap password hashing that conftest.py swaps in for tests,
+and for generated temporary passwords."""
+import re
+
 from pwdlib import PasswordHash
 
 from app.backend import security
+from app.backend.accounts import check_password
 
 
 # What the stored hash text says: Argon2id, 64 MiB memory, 3 passes, 4 threads.
@@ -29,3 +33,13 @@ def test_production_dummy_hash_costs_the_same_as_a_real_one(
 def test_tests_really_use_the_cheap_settings() -> None:
     # Proves the swap is active, so a speed regression points here first.
     assert security.hash_password("password123").startswith("$argon2id$v=19$m=1024,t=1,p=1$")
+
+
+def test_temporary_passwords_are_random_and_pass_the_password_rules() -> None:
+    passwords = [security.generate_temporary_password() for _ in range(50)]
+
+    assert len(set(passwords)) == 50
+    group = "[abcdefghjkmnpqrstuvwxyz2-9]{4}"
+    for password in passwords:
+        assert re.fullmatch(f"{group}(-{group}){{3}}", password)
+        check_password(password)

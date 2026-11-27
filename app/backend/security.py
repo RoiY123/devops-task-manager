@@ -1,4 +1,5 @@
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -43,6 +44,18 @@ def verify_login_password(plain_password: str, hashed_password: str | None) -> b
         return False
 
     return password_hash.verify(plain_password, hashed_password)
+
+
+# Lowercase letters and digits without look-alikes (i, l, o, 0, 1): easy to read out and type.
+TEMPORARY_PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
+
+
+def generate_temporary_password() -> str:
+    """Four groups of four random characters, about 79 bits, for example k7rm-q2xa-9fhp-w3nc."""
+    groups = (
+        "".join(secrets.choice(TEMPORARY_PASSWORD_ALPHABET) for _ in range(4)) for _ in range(4)
+    )
+    return "-".join(groups)
 
 
 def temporary_password_expired(user: User) -> bool:

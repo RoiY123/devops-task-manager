@@ -69,6 +69,22 @@ class LeadershipTransfer(BaseModel):
     user_id: int
 
 
+class NewUser(BaseModel):
+    email: str
+    role: Literal["admin", "member"]
+
+
+class AddedUser(BaseModel):
+    user: UserSummary
+    # Shown once; only its hash is stored.
+    temporary_password: str
+
+
+class TemporaryPassword(BaseModel):
+    # Shown once; only its hash is stored.
+    temporary_password: str
+
+
 class PasswordChange(BaseModel):
     current_password: str
     new_password: str
