@@ -79,6 +79,30 @@ def check_revoke(actor: User, viewer: User, owner: User) -> None:
     ensure_same_business(actor, owner)
 
 
+def check_add_user(actor: User) -> None:
+    # Admins may add admins too: they could add a member and promote them anyway.
+    if not can_manage(actor):
+        raise ActionNotAllowed("Only the leader and admins can manage users")
+
+
+def check_reset_password(actor: User, target: User) -> None:
+    ensure_same_business(actor, target)
+    if target.id == actor.id:
+        raise ActionNotAllowed("Change your own password with your current one instead")
+    if target.is_leader:
+        raise ActionNotAllowed("Only the operator can reset the leader's password")
+    if actor.is_leader:
+        return
+    if actor.role != ROLE_ADMIN:
+        raise ActionNotAllowed("Only the leader and admins can manage users")
+    if target.role != ROLE_MEMBER:
+        raise ActionNotAllowed("Admins can reset only members' passwords")
+    # Whoever resets a password can log in as that user, so the actor must
+    # already be able to change everything that user might.
+    if not actor.edits_all_tasks:
+        raise ActionNotAllowed("Only admins who edit all tasks can reset passwords")
+
+
 def check_transfer_leadership(actor: User, new_leader: User) -> None:
     # The one action on oneself: the leader steps down to admin.
     if not actor.is_leader:
