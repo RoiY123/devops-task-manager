@@ -101,6 +101,13 @@ class Reassigned(BaseModel):
     people_losing_access: int
 
 
+class Removed(BaseModel):
+    tasks_deleted: int
+    tasks_reassigned: int
+    # Grant holders who saw or changed the reassigned tasks and no longer can.
+    people_losing_access: int
+
+
 class PasswordChange(BaseModel):
     current_password: str
     new_password: str

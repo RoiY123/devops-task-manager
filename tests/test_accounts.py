@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.backend.accounts import (
     OperatorError,
     add_user,
+    counted,
     grant_task_edit,
     grant_task_view,
     list_task_grants,
@@ -20,6 +21,14 @@ from app.backend.accounts import (
     transfer_leadership,
 )
 from app.backend.models import ROLE_ADMIN, ROLE_MEMBER, Business, Task, User
+
+
+@pytest.mark.parametrize(
+    ("count", "expected"),
+    [(0, "0 tasks"), (1, "1 task"), (2, "2 tasks")],
+)
+def test_counts_in_messages_read_naturally(count: int, expected: str) -> None:
+    assert counted(count, "task", "tasks") == expected
 
 
 SLUG = "test-business"
@@ -187,7 +196,7 @@ def test_remove_user_deletes_the_user_and_only_their_tasks(
 
     deleted_tasks = remove_user(
         db_session, business_slug=SLUG, email="avi@example.com"
-    )
+    ).tasks_deleted
 
     assert deleted_tasks == 2
     assert db_session.get(User, avi_id) is None
