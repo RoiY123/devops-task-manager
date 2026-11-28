@@ -7,6 +7,7 @@ from app.backend.permissions import (
     ActionNotAllowed,
     check_add_user,
     check_grant,
+    check_reassign_tasks,
     check_reset_password,
     check_revoke,
     check_set_role,
@@ -206,3 +207,36 @@ def test_who_may_reset_passwords(
     people: dict[str, User], actor: str, target: str, refusal: str | None
 ) -> None:
     assert_outcome(lambda: check_reset_password(people[actor], people[target]), refusal)
+
+
+@pytest.mark.parametrize(
+    ("actor", "owner", "receiver", "refusal"),
+    [
+        ("dana", "eli", "noa", None),
+        # Editing all includes the leader's tasks; any receiver, admins included.
+        ("ori", "dana", "eli", None),
+        ("ori", "eli", "avi", None),
+        # An edit grant on Avi allows moving Avi's tasks, to anyone.
+        ("gal", "avi", "eli", None),
+        ("gal", "zoe", "avi", "only if you can change them"),
+        ("eli", "eli", "dana", None),
+        ("eli", "avi", "noa", "only if you can change them"),
+        # Members move nothing, not even their own tasks.
+        ("avi", "avi", "noa", "Only the leader and admins"),
+        ("ori", "avi", "boss", "User not found"),
+    ],
+)
+def test_who_may_reassign_tasks(
+    db_session: Session,
+    people: dict[str, User],
+    actor: str,
+    owner: str,
+    receiver: str,
+    refusal: str | None,
+) -> None:
+    assert_outcome(
+        lambda: check_reassign_tasks(
+            db_session, people[actor], [people[owner]], people[receiver]
+        ),
+        refusal,
+    )

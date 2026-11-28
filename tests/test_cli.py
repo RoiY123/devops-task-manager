@@ -300,6 +300,101 @@ def test_end_sessions_logs_the_user_out_but_keeps_the_password(
     assert login_status(client, "avi@example.com", PASSWORD) == 200
 
 
+REASSIGN = [
+    "reassign-tasks", "--business", "test-business",
+    "--from", "avi@example.com", "--to", "noa@example.com",
+]
+
+
+@pytest.fixture
+def avi_with_tasks(db_session: Session, user_factory) -> dict[str, int]:
+    """The user ids: the CLI closes its session, so the objects cannot be read afterwards."""
+    avi = user_factory("avi@example.com")
+    noa = user_factory("noa@example.com")
+    db_session.add_all(
+        [Task(title=f"Task {n}", owner=avi, business_id=avi.business_id) for n in range(2)]
+    )
+    db_session.flush()
+    return {"avi": avi.id, "noa": noa.id}
+
+
+def owner_ids(db: Session) -> set[int]:
+    return set(db.scalars(select(Task.owner_id)))
+
+
+def test_reassign_tasks_moves_every_task_after_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    avi_with_tasks: dict[str, int],
+) -> None:
+    exit_code = run_cli(
+        monkeypatch, db_session, REASSIGN, [], confirmations=["noa@example.com"]
+    )
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "This moves 2 tasks of avi@example.com to noa@example.com." in output
+    assert "Moved 2 tasks from avi@example.com to noa@example.com." in output
+    assert owner_ids(db_session) == {avi_with_tasks["noa"]}
+    event = db_session.scalars(
+        select(AuditEvent).where(AuditEvent.action == "tasks_reassigned")
+    ).one()
+    assert event.actor_kind == "operator"
+
+
+def test_reassign_tasks_with_a_wrong_confirmation_moves_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    avi_with_tasks: dict[str, int],
+) -> None:
+    exit_code = run_cli(
+        monkeypatch, db_session, REASSIGN, [], confirmations=["avi@example.com"]
+    )
+
+    assert exit_code == 1
+    assert "Confirmation did not match; nothing was moved" in capsys.readouterr().err
+    assert owner_ids(db_session) == {avi_with_tasks["avi"]}
+
+
+def test_reassign_tasks_without_tasks_asks_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    user_factory("avi@example.com")
+    user_factory("noa@example.com")
+
+    # No confirmation scripted: a question would fail the test.
+    exit_code = run_cli(monkeypatch, db_session, REASSIGN, [])
+
+    assert exit_code == 0
+    assert "avi@example.com has no tasks; nothing was moved." in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("to_email", "message"),
+    [("avi@example.com", "already owns these tasks"), ("nobody@example.com", "No user")],
+)
+def test_reassign_tasks_refuses_before_asking(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    avi_with_tasks: dict[str, int],
+    to_email: str,
+    message: str,
+) -> None:
+    args = REASSIGN[:-1] + [to_email]
+
+    exit_code = run_cli(monkeypatch, db_session, args, [])
+
+    assert exit_code == 1
+    assert message in capsys.readouterr().err
+    assert owner_ids(db_session) == {avi_with_tasks["avi"]}
+
+
 def test_set_role_reports_the_change(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

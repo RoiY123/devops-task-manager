@@ -1,9 +1,11 @@
 """Account rules and the operator's user-management actions."""
 import unicodedata
+from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError, MultipleResultsFound
 from sqlalchemy.orm import Session, aliased
 
@@ -14,6 +16,7 @@ from app.backend.models import (
     ROLE_ADMIN,
     ROLE_MEMBER,
     Business,
+    Task,
     TaskGrant,
     User,
 )
@@ -729,3 +732,93 @@ def remove_user(
     db.commit()
 
     return task_count
+
+
+@dataclass(frozen=True)
+class Reassignment:
+    tasks_moved: int
+    # People who saw or changed the tasks through a grant on their previous owner,
+    # and no longer can.
+    people_losing_access: int
+
+
+def people_losing_access(db: Session, owner_ids: set[int], receiver: User) -> int:
+    """Grant holders on a previous owner who no longer see or change the moved tasks."""
+    on_receiver = aliased(TaskGrant)
+    return db.scalar(
+        select(func.count(func.distinct(TaskGrant.viewer_id)))
+        .join(User, User.id == TaskGrant.viewer_id)
+        .outerjoin(
+            on_receiver,
+            (on_receiver.viewer_id == TaskGrant.viewer_id) & (on_receiver.owner_id == receiver.id),
+        )
+        .where(
+            TaskGrant.owner_id.in_(owner_ids),
+            TaskGrant.viewer_id != receiver.id,
+            # Editing all, or leading, keeps every access whoever owns the tasks.
+            ~User.edits_all_tasks,
+            User.id != receiver.business.leader_user_id,
+            # No grant on the receiver, or only view where they could edit before.
+            or_(
+                on_receiver.viewer_id.is_(None),
+                (TaskGrant.permission == PERMISSION_EDIT)
+                & (on_receiver.permission == PERMISSION_VIEW),
+            ),
+        )
+    )
+
+
+def move_tasks(
+    db: Session, *, tasks: Sequence[Task], receiver: User, actor: User | None = None
+) -> Reassignment:
+    """Give the tasks to the receiver and record it; the caller commits."""
+    moving = [task for task in tasks if task.owner_id != receiver.id]
+    if not moving:
+        return Reassignment(tasks_moved=0, people_losing_access=0)
+
+    previous = Counter(task.owner.email for task in moving)
+    # Counted before the move, while the grants still point at the previous owners.
+    losing = people_losing_access(db, {task.owner_id for task in moving}, receiver)
+    for task in moving:
+        task.owner = receiver
+    record(
+        db,
+        business=receiver.business,
+        actor=actor,
+        action="tasks_reassigned",
+        target=receiver,
+        task_ids=sorted(task.id for task in moving),
+        from_owners=dict(previous),
+    )
+    return Reassignment(tasks_moved=len(moving), people_losing_access=losing)
+
+
+def reassign_tasks(
+    db: Session, *, tasks: Sequence[Task], receiver: User, actor: User | None = None
+) -> Reassignment:
+    """Specific tasks, already checked by the caller."""
+    result = move_tasks(db, tasks=tasks, receiver=receiver, actor=actor)
+    db.commit()
+    return result
+
+
+def reassign_all_tasks(
+    db: Session,
+    *,
+    business_slug: str,
+    from_email: str,
+    to_email: str,
+    actor: User | None = None,
+) -> Reassignment:
+    """Every task of one user, for the operator and the user-level endpoint."""
+    source = find_user(db, business_slug=business_slug, email=from_email)
+    receiver = find_user(db, business_slug=business_slug, email=to_email)
+    if source.id == receiver.id:
+        raise OperatorError(f"{source.email} already owns these tasks; choose another user")
+
+    # Locked: a task created for the source meanwhile waits, then is moved too or not at all.
+    db.refresh(source, with_for_update=True)
+    tasks = db.scalars(select(Task).where(Task.owner_id == source.id)).all()
+    result = move_tasks(db, tasks=tasks, receiver=receiver, actor=actor)
+    db.commit()
+    return result

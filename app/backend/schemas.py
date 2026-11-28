@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Task(BaseModel):
@@ -83,6 +83,22 @@ class AddedUser(BaseModel):
 class TemporaryPassword(BaseModel):
     # Shown once; only its hash is stored.
     temporary_password: str
+
+
+class TaskReassignment(BaseModel):
+    # Bounded so one request stays reasonable; whole users go through the user endpoint.
+    task_ids: list[int] = Field(min_length=1, max_length=500)
+    to_user_id: int
+
+
+class TasksReceiver(BaseModel):
+    to_user_id: int
+
+
+class Reassigned(BaseModel):
+    tasks_moved: int
+    # Grant holders who saw or changed the tasks and no longer can.
+    people_losing_access: int
 
 
 class PasswordChange(BaseModel):
