@@ -2,7 +2,7 @@
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.backend.accounts import (
@@ -15,6 +15,7 @@ from app.backend.accounts import (
     list_users,
     reassign_all_tasks,
     reassign_tasks,
+    remove_user,
     reset_password,
     revoke_task_edit,
     revoke_task_view,
@@ -31,6 +32,7 @@ from app.backend.permissions import (
     check_can_view_management,
     check_grant,
     check_reassign_tasks,
+    check_remove_user,
     check_reset_password,
     check_revoke,
     check_set_editing,
@@ -47,6 +49,7 @@ from app.backend.schemas import (
     NewUser,
     PasswordChange,
     Reassigned,
+    Removed,
     RoleChange,
     TaskReassignment,
     TasksReceiver,
@@ -181,6 +184,39 @@ def reset_business_user_password(
     # The only copy of the password: no browser or proxy may keep this answer.
     response.headers["Cache-Control"] = "no-store"
     return TemporaryPassword(temporary_password=password)
+
+
+@router.delete("/business/users/{user_id}", response_model=Removed)
+def remove_business_user(
+    user_id: int,
+    reassign_to: int | None = None,
+    delete_tasks: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    target = user_in_business(db, current_user, user_id)
+    receiver = user_in_business(db, current_user, reassign_to) if reassign_to is not None else None
+    # Locked before counting: no task can be added to the user from here on.
+    lock_for_change(db, current_user, target, *([receiver] if receiver else []))
+    task_count = db.scalar(
+        select(func.count()).select_from(Task).where(Task.owner_id == target.id)
+    )
+    check_remove_user(
+        db,
+        current_user,
+        target,
+        task_count=task_count,
+        delete_tasks=delete_tasks,
+        receiver=receiver,
+    )
+    result = remove_user(
+        db,
+        business_slug=current_user.business.slug,
+        email=target.email,
+        actor=current_user,
+        reassign_to=receiver.email if receiver else None,
+    )
+    return Removed(**asdict(result))
 
 
 @router.post("/business/users/{user_id}/reassign-tasks", response_model=Reassigned)

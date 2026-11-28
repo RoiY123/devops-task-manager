@@ -163,6 +163,30 @@ def test_menu_removal_uses_the_typed_confirmation(
     assert find_user(db_session, "avi@example.com") is None
 
 
+def test_menu_removal_asks_what_happens_to_the_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    user_factory,
+) -> None:
+    avi = user_factory("avi@example.com")
+    # The id now: the menu closes its session, so the object cannot be read afterwards.
+    noa_id = user_factory("noa@example.com").id
+    db_session.add(Task(title="Avi's task", owner=avi, business_id=avi.business_id))
+    db_session.flush()
+
+    exit_code = run_menu(
+        monkeypatch,
+        db_session,
+        ["6", "test-business", "avi@example.com", "noa@example.com", "avi@example.com", "0"],
+    )
+
+    assert exit_code == 0
+    assert "1 task moved to noa@example.com." in capsys.readouterr().out
+    assert find_user(db_session, "avi@example.com") is None
+    assert db_session.scalar(select(Task.owner_id)) == noa_id
+
+
 # What Backspace on a Hebrew letter leaves behind: half of the letter's UTF-8 bytes.
 LEFTOVER_BYTE = chr(0xDCD7)
 

@@ -28,6 +28,7 @@ from app.backend.accounts import (
     ROLES,
     TEMPORARY_PASSWORD_LIFETIME,
     OperatorError,
+    counted,
     add_user,
     end_sessions,
     ensure_user_can_be_removed,
@@ -317,29 +318,58 @@ def set_role_command(db: Session, args: argparse.Namespace) -> str:
     )
 
 
+def receiver_email(db: Session, business: str, removed_email: str, email: str) -> str:
+    """The receiver's email as stored; refused if missing or the user being removed."""
+    receiver = find_user(db, business_slug=business, email=email)
+    if receiver.email == removed_email:
+        raise OperatorError("Choose another user to receive the tasks")
+    return receiver.email
+
+
 def remove_user_command(db: Session, args: argparse.Namespace) -> str:
     user = find_user(db, business_slug=args.business, email=args.email)
     # Checked before asking, so the operator never confirms a refused removal.
     ensure_user_can_be_removed(db, user)
     email = user.email
     task_count = len(user.tasks)
+    tasks = counted(task_count, "task", "tasks")
+    # The command line may name the receiver; the menu always asks.
+    reassign_to = getattr(args, "reassign_to", None)
+    if reassign_to is not None:
+        reassign_to = receiver_email(db, args.business, email, reassign_to)
     end_read_transaction(db)
 
     require_terminal()
-    print(f"This permanently deletes {email} and their {task_count} tasks.")
+    if task_count and reassign_to is None:
+        answer = ensure_readable(input(
+            f"{email} has {tasks}. Type the email of the user who should receive them, "
+            'or "delete" to delete them: '
+        )).strip()
+        if not answer:
+            raise OperatorError("No answer; nothing was removed")
+        if answer.lower() != "delete":
+            reassign_to = receiver_email(db, args.business, email, answer)
+            end_read_transaction(db)
+
+    if reassign_to and task_count:
+        print(f"This permanently deletes {email}; their {tasks} move to {reassign_to}.")
+    else:
+        print(f"This permanently deletes {email} and their {tasks}.")
     if ensure_readable(input("Type the email again to confirm: ")).strip() != email:
         raise OperatorError("Confirmation did not match; nothing was deleted")
 
-    deleted_tasks = remove_user(db, business_slug=args.business, email=email)
+    result = remove_user(db, business_slug=args.business, email=email, reassign_to=reassign_to)
 
-    return (
-        f"Removed {email} from business {args.business.strip()!r} "
-        f"and deleted {deleted_tasks} tasks."
-    )
-
-
-def tasks_text(count: int) -> str:
-    return f"{count} task" if count == 1 else f"{count} tasks"
+    removed = f"Removed {email} from business {args.business.strip()!r}"
+    if result.tasks_reassigned:
+        moved = counted(result.tasks_reassigned, "task", "tasks")
+        losing = counted(result.people_losing_access, "person", "people")
+        return f"{removed}; {moved} moved to {reassign_to}." + (
+            f"\n{losing} who saw or changed them through grants no longer can."
+            if result.people_losing_access
+            else ""
+        )
+    return f"{removed} and deleted {counted(result.tasks_deleted, 'task', 'tasks')}."
 
 
 def reassign_tasks_command(db: Session, args: argparse.Namespace) -> str:
@@ -356,7 +386,8 @@ def reassign_tasks_command(db: Session, args: argparse.Namespace) -> str:
 
     require_terminal()
     print(
-        f"This moves {tasks_text(task_count)} of {source_email} to {receiver_email}.\n"
+        f"This moves {counted(task_count, 'task', 'tasks')} of {source_email} "
+        f"to {receiver_email}.\n"
         f"{receiver_email}'s own tasks stay theirs, so moving back later needs "
         f"the task ids from the audit log."
     )
@@ -367,10 +398,10 @@ def reassign_tasks_command(db: Session, args: argparse.Namespace) -> str:
     result = reassign_all_tasks(
         db, business_slug=args.business, from_email=source_email, to_email=receiver_email
     )
-    moved = tasks_text(result.tasks_moved)
+    moved = counted(result.tasks_moved, "task", "tasks")
+    losing = counted(result.people_losing_access, "person", "people")
     return f"Moved {moved} from {source_email} to {receiver_email}." + (
-        f"\n{result.people_losing_access} people who saw or changed them "
-        f"through grants no longer can."
+        f"\n{losing} who saw or changed them through grants no longer can."
         if result.people_losing_access
         else ""
     )
@@ -770,7 +801,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     editing.set_defaults(handler=set_task_editing_command)
 
-    remove = user_command("remove-user", "Delete a user and their tasks.")
+    remove = user_command("remove-user", "Delete a user; their tasks are reassigned or deleted.")
+    remove.add_argument(
+        "--reassign-to",
+        help="Email of the user who receives the tasks; without it, you are asked if there are any.",
+    )
     remove.set_defaults(handler=remove_user_command)
 
     reassign = commands.add_parser(

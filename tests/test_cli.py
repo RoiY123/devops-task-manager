@@ -432,14 +432,81 @@ def test_remove_user_after_typed_confirmation(
         db_session,
         user_args("remove-user", "avi@example.com"),
         [],
-        confirmations=["avi@example.com"],
+        # First what to do with the task, then the confirmation.
+        confirmations=["delete", "avi@example.com"],
     )
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "deletes avi@example.com and their 1 tasks" in output
-    assert "deleted 1 tasks" in output
+    assert "deletes avi@example.com and their 1 task." in output
+    assert "deleted 1 task." in output
     assert db_session.get(User, avi_id) is None
+
+
+@pytest.mark.parametrize(
+    ("extra", "answers"),
+    [
+        (["--reassign-to", "noa@example.com"], ["avi@example.com"]),
+        ([], ["noa@example.com", "avi@example.com"]),
+        # Capitals do not matter, as everywhere else for emails.
+        ([], ["Noa@Example.com", "avi@example.com"]),
+    ],
+)
+def test_remove_user_can_reassign_the_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    avi_with_tasks: dict[str, int],
+    extra: list[str],
+    answers: list[str],
+) -> None:
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        user_args("remove-user", "avi@example.com", *extra),
+        [],
+        confirmations=answers,
+    )
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "their 2 tasks move to noa@example.com." in output
+    assert "2 tasks moved to noa@example.com." in output
+    assert db_session.get(User, avi_with_tasks["avi"]) is None
+    assert owner_ids(db_session) == {avi_with_tasks["noa"]}
+
+
+@pytest.mark.parametrize(
+    ("extra", "answers", "message"),
+    [
+        ([], ["nobody@example.com"], "No user"),
+        ([], ["avi@example.com"], "Choose another user"),
+        ([], [""], "No answer; nothing was removed"),
+        # Refused before any question: no answers scripted.
+        (["--reassign-to", "nobody@example.com"], [], "No user"),
+    ],
+)
+def test_remove_user_refuses_a_bad_receiver(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    db_session: Session,
+    avi_with_tasks: dict[str, int],
+    extra: list[str],
+    answers: list[str],
+    message: str,
+) -> None:
+    exit_code = run_cli(
+        monkeypatch,
+        db_session,
+        user_args("remove-user", "avi@example.com", *extra),
+        [],
+        confirmations=answers,
+    )
+
+    assert exit_code == 1
+    assert message in capsys.readouterr().err
+    assert db_session.get(User, avi_with_tasks["avi"]) is not None
+    assert owner_ids(db_session) == {avi_with_tasks["avi"]}
 
 
 def test_remove_user_with_wrong_confirmation_deletes_nothing(

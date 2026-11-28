@@ -36,6 +36,11 @@ class OperatorError(ValueError):
     """Rejected operator input. The message is safe to show the operator."""
 
 
+def counted(count: int, singular: str, plural: str) -> str:
+    """'1 task', '2 tasks': counts in messages read naturally."""
+    return f"{count} {singular if count == 1 else plural}"
+
+
 def reject_control_characters(text: str, label: str) -> None:
     # At the CLI's prompts, arrow keys insert escape sequences (ESC [ D) instead
     # of moving the cursor. Visible prompts show them as ^[[D, but at a password
@@ -102,7 +107,9 @@ def get_business(db: Session, slug: str, *, lock: bool = False) -> Business:
     query = select(Business).where(Business.slug == slug.strip())
     # The lock makes concurrent leader changes on one business wait their turn,
     # so none can leave it with no leader or a wrong one.
-    business = db.scalar(query.with_for_update() if lock else query)
+    # populate_existing: a copy loaded earlier in the request is refreshed, not reused stale.
+    locked = query.with_for_update().execution_options(populate_existing=True)
+    business = db.scalar(locked if lock else query)
 
     if business is None:
         raise OperatorError(f"No business with slug {slug.strip()!r}")
@@ -702,14 +709,39 @@ def list_task_grants(db: Session, business_slug: str) -> list[GrantListing]:
     return [GrantListing(*row) for row in db.execute(query)]
 
 
+@dataclass(frozen=True)
+class Removal:
+    tasks_deleted: int
+    tasks_reassigned: int
+    people_losing_access: int
+
+
 def remove_user(
-    db: Session, *, business_slug: str, email: str, actor: User | None = None
-) -> int:
-    """Delete the user and their tasks; return how many tasks were deleted."""
+    db: Session,
+    *,
+    business_slug: str,
+    email: str,
+    actor: User | None = None,
+    reassign_to: str | None = None,
+) -> Removal:
+    """Delete the user; their tasks go to reassign_to, or are deleted without it."""
     business = get_business(db, business_slug, lock=True)
     user = find_user(db, business_slug=business_slug, email=email)
+    receiver = None
+    if reassign_to is not None:
+        receiver = find_user(db, business_slug=business_slug, email=reassign_to)
+        if receiver.id == user.id:
+            raise OperatorError("Choose another user to receive the tasks")
     ensure_user_can_be_removed(db, user)
 
+    # Locked: a task created for the user meanwhile waits, then fails instead of slipping in.
+    db.refresh(user, with_for_update=True)
+    moved = (
+        move_tasks(db, tasks=list(user.tasks), receiver=receiver, actor=actor)
+        if receiver is not None
+        else Reassignment(tasks_moved=0, people_losing_access=0)
+    )
+    # Whatever was not moved is deleted with the user.
     task_count = len(user.tasks)
     # Written while the user still exists; the event outlives them.
     record(
@@ -719,6 +751,7 @@ def remove_user(
         action="user_removed",
         target=user,
         tasks_deleted=task_count,
+        **({"tasks_reassigned_to": receiver.email} if receiver is not None else {}),
     )
 
     if user.is_leader:
@@ -731,7 +764,11 @@ def remove_user(
     db.delete(user)
     db.commit()
 
-    return task_count
+    return Removal(
+        tasks_deleted=task_count,
+        tasks_reassigned=moved.tasks_moved,
+        people_losing_access=moved.people_losing_access,
+    )
 
 
 @dataclass(frozen=True)

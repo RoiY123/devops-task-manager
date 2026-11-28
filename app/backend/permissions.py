@@ -8,6 +8,7 @@ from collections.abc import Iterable
 
 from sqlalchemy.orm import Session
 
+from app.backend.accounts import OperatorError, counted
 from app.backend.models import PERMISSION_EDIT, ROLE_ADMIN, ROLE_MEMBER, User
 from app.backend.visibility import can_change_tasks_of
 
@@ -119,6 +120,40 @@ def check_reassign_tasks(
             raise ActionNotAllowed(
                 f"You can reassign {owner.email}'s tasks only if you can change them"
             )
+
+
+def check_remove_user(
+    db: Session,
+    actor: User,
+    target: User,
+    *,
+    task_count: int,
+    delete_tasks: bool,
+    receiver: User | None,
+) -> None:
+    # Who may remove whom comes first, so a refused caller learns nothing about the tasks.
+    ensure_same_business(actor, target)
+    if target.id == actor.id:
+        raise ActionNotAllowed("You cannot remove yourself")
+    if target.is_leader:
+        raise ActionNotAllowed("Only the operator can remove the leader")
+    if not actor.is_leader:
+        if actor.role != ROLE_ADMIN:
+            raise ActionNotAllowed("Only the leader and admins can manage users")
+        if target.role != ROLE_MEMBER:
+            raise ActionNotAllowed("Admins can remove only members")
+    if task_count == 0:
+        return
+    # A user with tasks needs exactly one decision about them.
+    if delete_tasks == (receiver is not None):
+        raise OperatorError(
+            f"{target.email} has {counted(task_count, 'task', 'tasks')}: "
+            "choose reassign_to or delete_tasks"
+        )
+    if receiver is not None:
+        check_reassign_tasks(db, actor, [target], receiver)
+    elif not can_change_tasks_of(db, actor, target.id):
+        raise ActionNotAllowed(f"You can delete {target.email}'s tasks only if you can change them")
 
 
 def check_transfer_leadership(actor: User, new_leader: User) -> None:

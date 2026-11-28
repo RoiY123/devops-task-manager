@@ -1,13 +1,16 @@
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.backend.accounts import (
     OperatorError,
     Reassignment,
+    Removal,
+    get_business,
     grant_task_view,
     reassign_all_tasks,
     reassign_tasks,
+    remove_user,
 )
 from app.backend.models import ROLE_ADMIN, AuditEvent, Business, Task, TaskGrant, User
 from app.backend.visibility import visible_tasks
@@ -195,3 +198,58 @@ def test_refused_moves_change_nothing(
 
     assert owned(db_session, team["avi"]) == 2
     assert reassigned(db_session) == []
+
+
+def test_removal_can_keep_the_tasks_by_reassigning_them(db_session: Session, team) -> None:
+    tasks = add_tasks(db_session, team["avi"], 2)
+    avi_id = team["avi"].id
+
+    result = remove_user(
+        db_session, business_slug=SLUG, email="avi@example.com", reassign_to="noa@example.com"
+    )
+
+    assert result == Removal(tasks_deleted=0, tasks_reassigned=2, people_losing_access=0)
+    assert db_session.get(User, avi_id) is None
+    assert owned(db_session, team["noa"]) == 2
+    actions = [
+        (event.action, event.details)
+        for event in db_session.scalars(select(AuditEvent).order_by(AuditEvent.id))
+    ]
+    assert actions == [
+        (
+            "tasks_reassigned",
+            {
+                "task_ids": sorted(task.id for task in tasks),
+                "from_owners": {"avi@example.com": 2},
+            },
+        ),
+        ("user_removed", {"tasks_deleted": 0, "tasks_reassigned_to": "noa@example.com"}),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("reassign_to", "message"),
+    [("avi@example.com", "Choose another user"), ("nobody@example.com", "No user")],
+)
+def test_refused_reassigning_removals_change_nothing(
+    db_session: Session, team, reassign_to: str, message: str
+) -> None:
+    add_tasks(db_session, team["avi"], 2)
+
+    with pytest.raises(OperatorError, match=message):
+        remove_user(
+            db_session, business_slug=SLUG, email="avi@example.com", reassign_to=reassign_to
+        )
+
+    assert owned(db_session, team["avi"]) == 2
+
+
+def test_a_locked_business_is_read_fresh(db_session: Session, team) -> None:
+    # Loaded earlier in the request, then changed by another request.
+    assert team["dana"].business.name
+    db_session.execute(
+        update(Business).where(Business.slug == SLUG).values(name="Changed meanwhile"),
+        execution_options={"synchronize_session": False},
+    )
+
+    assert get_business(db_session, SLUG, lock=True).name == "Changed meanwhile"
