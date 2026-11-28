@@ -72,6 +72,8 @@ def exists(db: Session, user_id: int) -> bool:
         ("gal", "avi", {"reassign_to": "eli"}, 0, 2),
         # No tasks: any admin may remove a member, without an option.
         ("eli", "zoe", {}, 0, 0),
+        # Without tasks, the grants do not matter.
+        ("gal", "zoe", {}, 0, 0),
     ],
 )
 def test_allowed_removals(
@@ -109,6 +111,9 @@ def test_allowed_removals(
     [
         ("eli", "avi", {"delete_tasks": "true"}, 403, "only if you can change them"),
         ("eli", "avi", {"reassign_to": "noa"}, 403, "only if you can change them"),
+        # An edit grant on Avi does not cover Noa's tasks, deleted or reassigned.
+        ("gal", "noa", {"delete_tasks": "true"}, 403, "only if you can change them"),
+        ("gal", "noa", {"reassign_to": "avi"}, 403, "only if you can change them"),
         ("eli", "ori", {"delete_tasks": "true"}, 403, "Admins can remove only members"),
         ("avi", "noa", {"delete_tasks": "true"}, 403, "Only the leader and admins"),
         ("dana", "dana", {}, 403, "cannot remove yourself"),
