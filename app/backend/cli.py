@@ -37,6 +37,7 @@ from app.backend.accounts import (
     grant_task_view,
     list_task_grants,
     list_users,
+    reassign_all_tasks,
     remove_user,
     reset_password,
     revoke_task_edit,
@@ -337,6 +338,44 @@ def remove_user_command(db: Session, args: argparse.Namespace) -> str:
     )
 
 
+def tasks_text(count: int) -> str:
+    return f"{count} task" if count == 1 else f"{count} tasks"
+
+
+def reassign_tasks_command(db: Session, args: argparse.Namespace) -> str:
+    source = find_user(db, business_slug=args.business, email=args.from_email)
+    receiver = find_user(db, business_slug=args.business, email=args.to)
+    if source.id == receiver.id:
+        raise OperatorError(f"{source.email} already owns these tasks; choose another user")
+    task_count = len(source.tasks)
+    source_email, receiver_email = source.email, receiver.email
+    end_read_transaction(db)
+
+    if task_count == 0:
+        return f"{source_email} has no tasks; nothing was moved."
+
+    require_terminal()
+    print(
+        f"This moves {tasks_text(task_count)} of {source_email} to {receiver_email}.\n"
+        f"{receiver_email}'s own tasks stay theirs, so moving back later needs "
+        f"the task ids from the audit log."
+    )
+    confirmation = ensure_readable(input("Type the receiving email again to confirm: "))
+    if confirmation.strip() != receiver_email:
+        raise OperatorError("Confirmation did not match; nothing was moved")
+
+    result = reassign_all_tasks(
+        db, business_slug=args.business, from_email=source_email, to_email=receiver_email
+    )
+    moved = tasks_text(result.tasks_moved)
+    return f"Moved {moved} from {source_email} to {receiver_email}." + (
+        f"\n{result.people_losing_access} people who saw or changed them "
+        f"through grants no longer can."
+        if result.people_losing_access
+        else ""
+    )
+
+
 def set_task_visibility_command(db: Session, args: argparse.Namespace) -> str:
     if args.visibility not in ("all", "own"):
         raise OperatorError("Visibility must be 'all' or 'own'")
@@ -535,6 +574,11 @@ MENU: list[tuple[str, Handler, list[tuple[str, str, bool]]]] = [
         ("business", "Business slug", True),
         ("email", "Email", True),
     ]),
+    ("Reassign tasks", reassign_tasks_command, [
+        ("business", "Business slug", True),
+        ("from_email", "Current owner email", True),
+        ("to", "Receiving user email", True),
+    ]),
     ("Reset password", reset_password_command, [
         ("business", "Business slug", True),
         ("email", "Email", True),
@@ -728,6 +772,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     remove = user_command("remove-user", "Delete a user and their tasks.")
     remove.set_defaults(handler=remove_user_command)
+
+    reassign = commands.add_parser(
+        "reassign-tasks",
+        help="Move every task of one user to another user in the same business.",
+    )
+    reassign.add_argument("--business", required=True, help="Business slug.")
+    reassign.add_argument(
+        "--from", dest="from_email", required=True, help="Email of the current owner."
+    )
+    reassign.add_argument("--to", required=True, help="Email of the user receiving the tasks.")
+    reassign.set_defaults(handler=reassign_tasks_command)
 
     # A grant names two users, so these take --viewer and --owner instead of --email.
     def grant_command(

@@ -262,6 +262,17 @@ Expected: `VIEWER_EMAIL now sees the tasks of OWNER_EMAIL (view only).`, `VIEWER
 
 A view grant is refused while the user sees all tasks. An edit grant requires that the user can already see the owner's tasks (they see all, or have a view grant), and upgrades a view grant. Revoking an edit grant keeps the view; revoking the view removes the grant entirely. `list-task-grants` shows each grant as `(view)` or `(edit)`. Repeating a grant or revoking a missing one changes nothing. Removing either user deletes their grants.
 
+**Move a user's tasks.** Moves every task of one user to another user in the same business, for example before removing someone whose work should stay. You see only how many tasks move, never their titles; individual tasks are managed by the business's leader and admins. Application instance; one command. It shows how many tasks will move, then asks you to type the receiving email again:
+
+```bash
+./scripts/operator.sh reassign-tasks \
+  --business BUSINESS_SLUG --from CURRENT_OWNER_EMAIL --to RECEIVING_EMAIL
+```
+
+Expected: `Moved N tasks from CURRENT_OWNER_EMAIL to RECEIVING_EMAIL.`
+
+Grants stay with their users: people granted access to the previous owner's tasks stop seeing or changing the moved ones, and the output says how many. The moved tasks are not marked among the receiver's own, so moving them back is done by the business's leader or an admin, who can move specific tasks; the audit log lists their ids.
+
 **Remove a user.** Permanently deletes the user and all their tasks; their existing logins stop working immediately. Application instance; one command. It shows how many tasks will be deleted, then asks you to type the email again:
 
 ```bash

@@ -4,6 +4,8 @@ The operator's CLI does not use these checks: the operator may change anyone.
 They decide only who may act; the account functions still keep the data valid
 (for example, admins always see all tasks).
 """
+from collections.abc import Iterable
+
 from sqlalchemy.orm import Session
 
 from app.backend.models import PERMISSION_EDIT, ROLE_ADMIN, ROLE_MEMBER, User
@@ -101,6 +103,22 @@ def check_reset_password(actor: User, target: User) -> None:
     # already be able to change everything that user might.
     if not actor.edits_all_tasks:
         raise ActionNotAllowed("Only admins who edit all tasks can reset passwords")
+
+
+def check_reassign_tasks(
+    db: Session, actor: User, owners: Iterable[User], receiver: User
+) -> None:
+    # Members manage no one, so they move no tasks, even ones they may change.
+    if not can_manage(actor):
+        raise ActionNotAllowed("Only the leader and admins can reassign tasks")
+    ensure_same_business(actor, receiver)
+    # Changing a task includes deleting it, so whoever may change it may also hand it over.
+    for owner in owners:
+        ensure_same_business(actor, owner)
+        if not can_change_tasks_of(db, actor, owner.id):
+            raise ActionNotAllowed(
+                f"You can reassign {owner.email}'s tasks only if you can change them"
+            )
 
 
 def check_transfer_leadership(actor: User, new_leader: User) -> None:

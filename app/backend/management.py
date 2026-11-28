@@ -2,6 +2,7 @@
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.backend.accounts import (
@@ -12,6 +13,8 @@ from app.backend.accounts import (
     grant_task_view,
     list_task_grants,
     list_users,
+    reassign_all_tasks,
+    reassign_tasks,
     reset_password,
     revoke_task_edit,
     revoke_task_view,
@@ -21,12 +24,13 @@ from app.backend.accounts import (
     transfer_leadership,
 )
 from app.backend.database import get_db
-from app.backend.models import PERMISSION_EDIT, PERMISSION_VIEW, User
+from app.backend.models import PERMISSION_EDIT, PERMISSION_VIEW, Task, User
 from app.backend.permissions import (
     can_manage,
     check_add_user,
     check_can_view_management,
     check_grant,
+    check_reassign_tasks,
     check_reset_password,
     check_revoke,
     check_set_editing,
@@ -42,7 +46,10 @@ from app.backend.schemas import (
     Me,
     NewUser,
     PasswordChange,
+    Reassigned,
     RoleChange,
+    TaskReassignment,
+    TasksReceiver,
     TemporaryPassword,
     Token,
     UserSummary,
@@ -53,6 +60,7 @@ from app.backend.security import (
     get_current_user,
     get_token_user,
 )
+from app.backend.visibility import visible_tasks
 
 
 router = APIRouter()
@@ -173,6 +181,59 @@ def reset_business_user_password(
     # The only copy of the password: no browser or proxy may keep this answer.
     response.headers["Cache-Control"] = "no-store"
     return TemporaryPassword(temporary_password=password)
+
+
+@router.post("/business/users/{user_id}/reassign-tasks", response_model=Reassigned)
+def reassign_user_tasks(
+    user_id: int,
+    change: TasksReceiver,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    source = user_in_business(db, current_user, user_id)
+    receiver = user_in_business(db, current_user, change.to_user_id)
+    lock_for_change(db, current_user, source, receiver)
+    check_reassign_tasks(db, current_user, [source], receiver)
+    result = reassign_all_tasks(
+        db,
+        business_slug=current_user.business.slug,
+        from_email=source.email,
+        to_email=receiver.email,
+        actor=current_user,
+    )
+    return Reassigned(**asdict(result))
+
+
+@router.post("/business/tasks/reassign", response_model=Reassigned)
+def reassign_chosen_tasks(
+    change: TaskReassignment,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    receiver = user_in_business(db, current_user, change.to_user_id)
+    ids = set(change.task_ids)
+    chosen = select(Task).where(Task.id.in_(ids), visible_tasks(current_user))
+    first_read = db.scalars(chosen).all()
+    # A task the caller cannot see is reported like a missing one, revealing nothing.
+    if len(first_read) != len(ids):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    owner_ids = {task.owner_id for task in first_read}
+    owners = [db.get(User, owner_id) for owner_id in owner_ids]
+
+    # Business, then users, then tasks: the order removal locks in, so neither deadlocks.
+    lock_for_change(db, current_user, receiver, *owners)
+    tasks = db.scalars(
+        chosen.with_for_update().execution_options(populate_existing=True)
+    ).all()
+    if len(tasks) != len(ids) or {task.owner_id for task in tasks} != owner_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The tasks changed meanwhile; try again",
+        )
+
+    check_reassign_tasks(db, current_user, owners, receiver)
+    result = reassign_tasks(db, tasks=tasks, receiver=receiver, actor=current_user)
+    return Reassigned(**asdict(result))
 
 
 @router.get("/business/users", response_model=list[UserSummary])
